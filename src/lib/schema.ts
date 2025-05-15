@@ -3,9 +3,22 @@ import { Schema } from 'effect';
 export const Status = Schema.Literal(0, 1, 2, 3).annotations({
 	title: 'Status',
 });
+
+export const StatusLabels: Record<number, string> = {
+	0: 'Todo',
+	1: 'In Progress',
+	2: 'Done',
+	3: 'Backlog',
+};
+
 export const Priority = Schema.Literal(0, 1, 2).annotations({
 	title: 'Priority',
 });
+export const PriorityLabels: Record<number, string> = {
+	0: 'Low',
+	1: 'Medium',
+	2: 'High',
+};
 
 const Integer = Schema.Number.pipe(Schema.int()).annotations({
 	title: 'Integer',

@@ -1,8 +1,10 @@
 <script lang="ts">
+	import CreateIssue from "$lib/components/CreateIssue.svelte";
 	import { Button } from "$lib/shadcn/components/ui/button";
 	import { Collapsible } from "$lib/shadcn/components/ui/collapsible";
 	import { Input } from "$lib/shadcn/components/ui/input";
 	import { Separator } from "$lib/shadcn/components/ui/separator";
+
 	import { IsMobile } from "$lib/shadcn/hooks/is-mobile.svelte";
 
 	let sidebarOpen = false;
@@ -105,22 +107,7 @@
 					class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6"
 				>
 					<h1 class="text-2xl font-bold">Issues</h1>
-					<Button>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="16"
-							height="16"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							class="mr-2"
-							><path d="M5 12h14"></path><path d="M12 5v14"></path></svg
-						>
-						New Issue
-					</Button>
+					<CreateIssue />
 				</div>
 
 				<!-- Issue list -->
