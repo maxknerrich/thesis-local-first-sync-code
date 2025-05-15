@@ -14,45 +14,34 @@
 		"indentStyle": "tab"
 	},
 	"assist": { "actions": { "source": { "organizeImports": "on" } } },
+	"html": {
+		"formatter": {
+			"enabled": true
+		}
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
-			"style": {
-				"useNamingConvention": {
-					"level": "error",
-					"options": {
-						"conventions": [
-							{
-								"selector": {
-									"kind": "classMember"
-								},
-								"formats": ["snake_case"]
-							},
-							{
-								"selector": {
-									"kind": "objectLiteralMember"
-								},
-								"formats": ["snake_case"]
-							},
-							{
-								"selector": {
-									"kind": "class"
-								},
-								"formats": ["PascalCase"]
-							},
-							{
-								"selector": {
-									"kind": "typeLike"
-								},
-								"formats": ["PascalCase"]
-							}
-						]
+			"recommended": true
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["src/**/*.svelte", "*.astro", "*.vue"],
+			"linter": {
+				"rules": {
+					"style": {
+						"useConst": "off",
+						"useImportType": "off"
+					},
+					"correctness": {
+						"noUnusedImports": "off",
+						"noUnusedVariables": "off"
 					}
 				}
 			}
 		}
-	},
+	],
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "single"
