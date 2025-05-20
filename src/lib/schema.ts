@@ -26,9 +26,9 @@ export const PriorityLabels: Record<number, string> = {
 export const Issue = type({
 	'id?': 'number.integer',
 	title: 'string',
-	description: 'string',
-	status: '0|1|2|3',
-	priority: '0|1|2',
+	'description?': 'string',
+	status: Status,
+	priority: Priority,
 	github_number: 'number.integer',
 	user: User,
 	'assignee?': type(User, '[]'),
