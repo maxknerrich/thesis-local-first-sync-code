@@ -13,6 +13,10 @@ declare module 'dexie' {
 	}
 }
 
+export function make_sync_store(indexes: string) {
+	return indexes + ', remote_id';
+}
+
 export function X_Sync_Addon_Dexie(db: Dexie) {
 	/**
 	 * Override the Dexie.version([version]).store method to add the _writeLog table.
@@ -21,8 +25,18 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 		db.Version.prototype.stores,
 		(originalStores) =>
 			function (this: unknown, stores: { [key: string]: string }) {
+				// skip if no stores are defined or if no store is a synced store
+				if (!stores || !Object.values(stores).includes('remote_id')) {
+					return originalStores.call(this, stores);
+				}
 				// Add the _writeLog table to the stores object or override it if it exists
 				stores._writeLog = '++number, [object_id+table], operation';
+				for (let key in stores) {
+					if (key === '_writeLog') {
+						continue; // Skip if the key is _writeLog
+					}
+					stores[key] += ', remote_id'; // Add sync metadata
+				}
 				// Call the original stores function with the modified schema
 				return originalStores.call(this, stores);
 			},
@@ -37,6 +51,13 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 			async function (this: Dexie.Table, ...args: unknown[]) {
 				// If the table is _writeLog, call the original method
 				if (this.name === '_writeLog') {
+					return original.apply(this, args);
+				}
+				// check if table has index remote_id and if not, call the original method
+				const hasRemoteId = this.schema.indexes.some(
+					(index) => index.name === 'remote_id',
+				);
+				if (!hasRemoteId) {
 					return original.apply(this, args);
 				}
 				const result = db.transaction('rw', [db._writeLog, this], async () => {
