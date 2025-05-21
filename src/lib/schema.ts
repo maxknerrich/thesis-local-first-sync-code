@@ -30,7 +30,7 @@ export const Issue = type({
 	status: Status,
 	priority: Priority,
 	github_number: 'number.integer',
-	user: User,
+	// user: User,
 	'assignee?': type(User, '[]'),
 	created_at: 'Date',
 	updated_at: 'Date',
