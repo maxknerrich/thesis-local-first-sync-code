@@ -5,7 +5,7 @@ const WriteLogEntry = type({
 	object_id: 'string',
 	table: 'string',
 	method: "'create' | 'update' | 'delete'",
-	old_data: 'object',
-	new_data: 'object',
+	old_data: 'object | null',
+	new_data: 'object | null',
 });
 export type WriteLogEntry = typeof WriteLogEntry.infer;
