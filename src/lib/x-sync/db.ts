@@ -12,9 +12,9 @@ declare module 'dexie' {
 		_writeLog: EntityTable<WriteLogEntry, 'number'>;
 	}
 }
-
+// Add the remote_id index to synced tables
 export function make_sync_store(indexes: string) {
-	return indexes + ', remote_id';
+	return `${indexes}, remote_id`;
 }
 
 export function X_Sync_Addon_Dexie(db: Dexie) {
@@ -26,17 +26,15 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 		(originalStores) =>
 			function (this: unknown, stores: { [key: string]: string }) {
 				// skip if no stores are defined or if no store is a synced store
-				if (!stores || !Object.values(stores).includes('remote_id')) {
+				if (
+					!stores ||
+					!Object.values(stores).filter((store) => store.includes('remote_id'))
+						.length
+				) {
 					return originalStores.call(this, stores);
 				}
 				// Add the _writeLog table to the stores object or override it if it exists
 				stores._writeLog = '++number, [object_id+table], operation';
-				for (let key in stores) {
-					if (key === '_writeLog') {
-						continue; // Skip if the key is _writeLog
-					}
-					stores[key] += ', remote_id'; // Add sync metadata
-				}
 				// Call the original stores function with the modified schema
 				return originalStores.call(this, stores);
 			},
@@ -60,17 +58,21 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				if (!hasRemoteId) {
 					return original.apply(this, args);
 				}
-				const result = db.transaction('rw', [db._writeLog, this], async () => {
-					const result = await original.apply(this, args);
-					await db._writeLog.add({
-						object_id: result,
-						table: this.name,
-						method: 'create',
-						old_data: null,
-						new_data: args[0] as object,
-					});
-					return result;
-				});
+				const result = db.transaction(
+					'rw',
+					['_writeLog', this.name],
+					async () => {
+						const result = await original.apply(this, args);
+						await db._writeLog.add({
+							object_id: result,
+							table: this.name,
+							method: 'create',
+							old_data: null,
+							new_data: args[0] as object,
+						});
+						return result;
+					},
+				);
 				return result;
 			},
 	);
@@ -86,17 +88,21 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				if (this.name === '_writeLog') {
 					return original.apply(this, args);
 				}
-				const result = db.transaction('rw', [db._writeLog, this], async () => {
-					const result = await original.apply(this, args);
-					await db._writeLog.add({
-						object_id: result,
-						table: this.name,
-						method: 'update',
-						old_data: args[0] as object,
-						new_data: args[1] as object,
-					});
-					return result;
-				});
+				const result = db.transaction(
+					'rw',
+					['_writeLog', this.name],
+					async () => {
+						const result = await original.apply(this, args);
+						await db._writeLog.add({
+							object_id: result,
+							table: this.name,
+							method: 'update',
+							old_data: args[0] as object,
+							new_data: args[1] as object,
+						});
+						return result;
+					},
+				);
 				return result;
 			},
 	);
@@ -112,17 +118,21 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				if (this.name === '_writeLog') {
 					return original.apply(this, args);
 				}
-				const result = db.transaction('rw', [db._writeLog, this], async () => {
-					const result = await original.apply(this, args);
-					await db._writeLog.add({
-						object_id: args[0] as string,
-						table: this.name,
-						method: 'delete',
-						old_data: args[0] as object,
-						new_data: null,
-					});
-					return result;
-				});
+				const result = db.transaction(
+					'rw',
+					['_writeLog', this.name],
+					async () => {
+						const result = await original.apply(this, args);
+						await db._writeLog.add({
+							object_id: args[0] as string,
+							table: this.name,
+							method: 'delete',
+							old_data: args[0] as object,
+							new_data: null,
+						});
+						return result;
+					},
+				);
 				return result;
 			},
 	);
