@@ -11,10 +11,10 @@ const BASIC_HEADERS = {
 
 export const GH_API = {
 	query: {
-		get_all_repos: async ({ user }: { user: string }) => {
+		get_all_repos: async () => {
 			const { data, error } = await paginatedFetch<
 				paths['/users/{username}/repos']['get']['responses']['200']['content']['application/json']
-			>(`https://api.github.com/users/${user}/repos`, {
+			>(`https://api.github.com/user/repos`, {
 				headers: BASIC_HEADERS,
 			});
 			if (error) {
