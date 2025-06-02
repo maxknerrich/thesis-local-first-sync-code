@@ -47,9 +47,6 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				stores: T,
 				syncConfig?: { sync: Array<keyof T> },
 			) {
-				console.log('this', this);
-				console.log('stores', stores);
-				console.log('syncConfig', syncConfig);
 				// skip if no stores are defined or if no store is a synced store
 				if (!stores || !syncConfig || syncConfig.sync.length === 0) {
 					return originalStores.call(this, stores);
