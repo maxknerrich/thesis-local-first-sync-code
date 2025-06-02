@@ -1,9 +1,8 @@
 import type Dexie from 'dexie';
-import type { EntityTable } from 'dexie';
 import { createManager, type Manager } from 'tinytick';
 import type { WriteLogEntry } from './entry';
 
-type Result<T> =
+export type Result<T> =
 	| {
 			data: T;
 			error: null;
@@ -21,21 +20,27 @@ export interface Object extends PullItem {
 	id: number;
 }
 
-type PullResult = Object[];
+export type PullResult = PullItem[];
 
-export abstract class SyncBase {
-	protected db: Dexie;
+type TableMetadata =
+	| {
+			lastSync: 'never';
+			status: 'idle';
+	  }
+	| { lastSync: Date; status: 'syncing' | 'synced' };
+
+export abstract class SyncBase<TBD extends Dexie = Dexie> {
+	protected db: TBD;
 	protected syncedTables: string[];
 	private readonly manager: Manager;
 	private readonly sync_interval: number;
-	private readonly listener;
-	private lastSync: string = 'never';
-	private status: 'idle' | 'syncing' | 'synced' =
-		this.lastSync === 'never' ? 'idle' : 'synced';
+	// private readonly listener;
+	private lastSync: Map<string, TableMetadata>;
+	private status: 'idle' | 'syncing' | 'synced' = 'idle';
 
-	constructor(db: Dexie) {
+	constructor({ db, syncOrder }: { db: TBD; syncOrder?: string[] }) {
 		this.db = db;
-		this.syncedTables = db._syncedStores;
+		this.syncedTables = syncOrder ?? db._syncedStores;
 		this.manager = createManager();
 		this.sync_interval = 1 * 1000; // 1 second for testing, change to 5 minutes (300000) in production
 
@@ -43,35 +48,45 @@ export abstract class SyncBase {
 			'sync',
 			async (_, signal) => this.sync(signal),
 			'syncHandler',
-			{
-				maxDuration: 30 * 1000, // 30 seconds
-				retryDelay: this.sync_interval,
-				repeatDelay: this.sync_interval,
-			},
+			// {
+			// 	maxDuration: 30 * 1000, // 30 seconds
+			// 	retryDelay: this.sync_interval,
+			// 	repeatDelay: this.sync_interval,
+			// },
 		);
 		this.manager.setTask(
 			'syncTable',
 			async (table) => this.syncTable(table as keyof typeof this.db),
 			'syncHandler',
 		);
-		this.listener = this.manager.addRunningTaskRunIdsListener((manager) => {
-			if (manager.getRunningTaskRunIds().length > 0) {
-				this.status = 'syncing';
-				return;
-			}
-			this.status = 'synced';
-			this.lastSync = new Date().toISOString();
-		});
+		// this.listener = this.manager.addRunningTaskRunIdsListener((manager) => {
+		// 	if (manager.getRunningTaskRunIds().length > 0) {
+		// 		this.status = 'syncing';
+		// 		return;
+		// 	}
+		// 	this.status = 'synced';
+		// 	this.lastSync = new Date().toISOString();
+		// });
+		this.lastSync = new Map();
+		for (const table of this.syncedTables) {
+			this.lastSync.set(table, { lastSync: 'never', status: 'idle' });
+		}
+		console.log(
+			`SyncBase initialized with tables: ${this.syncedTables.join(', ')}`,
+		);
+		this.manager.start();
 		this.manager.scheduleTaskRun('sync');
 	}
 
-	abstract pullData({
-		table,
-		since,
-	}: {
-		table: string;
-		since?: string;
-	}): Promise<Result<PullResult>>;
+	protected getSince(table: string): null | Date {
+		const lastSync = this.lastSync.get(table)?.lastSync;
+		if (lastSync === 'never' || typeof lastSync === 'string' || !lastSync) {
+			return null;
+		}
+		return lastSync;
+	}
+
+	abstract pullData({ table }: { table: string }): Promise<Result<PullResult>>;
 	abstract pushCreate({
 		table,
 		data,
@@ -100,7 +115,24 @@ export abstract class SyncBase {
 		if (signal.aborted) {
 			return;
 		}
+		console.log('Starting sync process...');
 		for (const table of this.syncedTables) {
+			const lastSync = this.lastSync.get(table)?.lastSync;
+
+			if (!lastSync) continue;
+
+			if (lastSync === 'never' || typeof lastSync === 'string' || !lastSync) {
+				this.manager.scheduleTaskRun('syncTable', table);
+				continue;
+			}
+
+			const differenceInMinutes =
+				Math.abs(Date.now() - lastSync.getTime()) / 60000;
+
+			if (differenceInMinutes <= 5) {
+				continue;
+			}
+
 			this.manager.scheduleTaskRun('syncTable', table);
 		}
 	}
@@ -127,10 +159,14 @@ export abstract class SyncBase {
 		return 'update';
 	}
 
-	protected async syncTable(table: keyof typeof this.db) {
+	protected async syncTable(table: keyof TBD) {
+		if (typeof table !== 'string') return;
+		console.log(`Syncing table: ${table}`);
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 
 		const remoteData = await this.pullData({ table });
+
+		console.log(remoteData);
 
 		if (remoteData.error) {
 			return;
@@ -162,6 +198,7 @@ export abstract class SyncBase {
 		//TODO increase merge performance through hashing
 		if (writeLog.length === 0) {
 			//merge remote data with the local data if there is a local data
+			console.log(`Merging remote data with local data for table: ${table}`);
 			let mergedData = [];
 			for (const remoteItem of remoteData.data) {
 				const localItem = localRemoteItems.find(
@@ -217,5 +254,6 @@ export abstract class SyncBase {
 			}
 			const responses = await Promise.allSettled(pushPromises);
 		}
+		this.lastSync.set(table, { lastSync: new Date(), status: 'synced' });
 	}
 }

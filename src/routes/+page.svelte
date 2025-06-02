@@ -4,8 +4,10 @@
 	import { GH_API } from "$lib/github";
 	import { mapper } from "$lib/mapper";
 	import type { Issue } from "$lib/schema";
+	import { GitHubSync } from "$lib/sync";
+	import { createManager } from "tinytick";
 
-	console.log(PUBLIC_GITHUB_TOKEN);
+	const sync = new GitHubSync({ db });
 
 	async function getRepos() {
 		// Get the list of repositories
@@ -54,6 +56,7 @@
 		// Add the new friend!
 		const id = await db.issues.add(
 			{
+				id: 14,
 				title: "New Issue",
 				description: "This is a new issue",
 				created_at: new Date(),

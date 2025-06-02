@@ -64,7 +64,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				});
 				// Add the _writeLog table to the stores object or override it if it exists
 				(stores as Record<string, string>)['_writeLog'] =
-					'++number, [object_id+table], operation';
+					'++number, [object_id+table], table';
 				// Call the original stores function with the modified schema
 				return originalStores.call(this, stores);
 			},
