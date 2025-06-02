@@ -2,7 +2,7 @@ import { type } from 'arktype';
 
 const WriteLogEntry = type({
 	number: 'number.integer',
-	object_id: 'string',
+	object_id: 'number.integer',
 	table: 'string',
 	method: "'create' | 'update' | 'delete'",
 	old_data: 'object | null',

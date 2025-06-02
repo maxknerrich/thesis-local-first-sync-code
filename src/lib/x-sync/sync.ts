@@ -1,5 +1,7 @@
 import type Dexie from 'dexie';
+import type { EntityTable } from 'dexie';
 import { createManager, type Manager } from 'tinytick';
+import type { WriteLogEntry } from './entry';
 
 type Result<T> =
 	| {
@@ -26,6 +28,10 @@ export abstract class SyncBase {
 	protected syncedTables: string[];
 	private readonly manager: Manager;
 	private readonly sync_interval: number;
+	private readonly listener;
+	private lastSync: string = 'never';
+	private status: 'idle' | 'syncing' | 'synced' =
+		this.lastSync === 'never' ? 'idle' : 'synced';
 
 	constructor(db: Dexie) {
 		this.db = db;
@@ -48,13 +54,47 @@ export abstract class SyncBase {
 			async (table) => this.syncTable(table as keyof typeof this.db),
 			'syncHandler',
 		);
+		this.listener = this.manager.addRunningTaskRunIdsListener((manager) => {
+			if (manager.getRunningTaskRunIds().length > 0) {
+				this.status = 'syncing';
+				return;
+			}
+			this.status = 'synced';
+			this.lastSync = new Date().toISOString();
+		});
 		this.manager.scheduleTaskRun('sync');
 	}
 
-	abstract pullData(table: string, since?: Date): Promise<Result<PullResult>>;
-	abstract pushCreate(table: string, data: unknown): Promise<Result<Object>>;
-	abstract pushUpdate(table: string, data: unknown): Promise<Result<Object>>;
-	abstract pushDelete(table: string, id: unknown): Promise<Result<Object>>;
+	abstract pullData({
+		table,
+		since,
+	}: {
+		table: string;
+		since?: string;
+	}): Promise<Result<PullResult>>;
+	abstract pushCreate({
+		table,
+		data,
+	}: {
+		table: string;
+		data: Object;
+	}): Promise<Result<Object>>;
+	abstract pushUpdate({
+		table,
+		data,
+	}: {
+		table: string;
+		data: Object;
+	}): Promise<Result<Object>>;
+	abstract pushDelete({
+		table,
+		id,
+		remote_id,
+	}: {
+		table: string;
+		id: number;
+		remote_id: number | string;
+	}): Promise<Result<Object>>;
 
 	protected async sync(signal: AbortSignal): Promise<void> {
 		if (signal.aborted) {
@@ -75,16 +115,26 @@ export abstract class SyncBase {
 			...remoteItem,
 		};
 	}
+	private static determineAction(
+		events: WriteLogEntry[],
+	): 'create' | 'update' | 'delete' {
+		if (events.some((e) => e.method === 'delete')) {
+			return 'delete';
+		}
+		if (events.some((e) => e.method === 'create')) {
+			return 'create';
+		}
+		return 'update';
+	}
 
 	protected async syncTable(table: keyof typeof this.db) {
-		const remoteData = await this.pullData(table);
-
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
+
+		const remoteData = await this.pullData({ table });
 
 		if (remoteData.error) {
 			return;
 		}
-
 		const writeLogPromise = this.db._writeLog
 			.where('table')
 			.equals(table)
@@ -119,10 +169,53 @@ export abstract class SyncBase {
 				);
 				mergedData.push(SyncBase.mergeItems(remoteItem, localItem));
 			}
-			this.db.transaction('rw', localTable, async () => {
+			await this.db.transaction('rw', localTable, async () => {
 				await localTable.bulkPut(mergedData);
 			});
 			return;
+		}
+
+		const objectWrites = new Map<number, WriteLogEntry[]>();
+		for (const entry of writeLog) {
+			if (entry.table !== table) continue;
+			if (!objectWrites.has(entry.object_id)) {
+				objectWrites.set(entry.object_id, [entry]);
+			}
+			objectWrites.get(entry.object_id)?.push(entry);
+		}
+		const localWriteItems = localTable
+			.where('id')
+			.anyOf(Array.from(objectWrites.keys()))
+			.toArray() as Promise<Object[]>;
+		// TODO Test materialize vs loading the ids and then pushing
+		if (remoteData.data.length === 0) {
+			const pushPromises = [];
+			for (const item of await localWriteItems) {
+				const action = SyncBase.determineAction(
+					objectWrites.get(item.id) as WriteLogEntry[],
+				);
+				switch (action) {
+					case 'create': {
+						pushPromises.push(this.pushCreate({ table, data: item }));
+						break;
+					}
+					case 'update': {
+						pushPromises.push(this.pushUpdate({ table, data: item }));
+						break;
+					}
+					case 'delete': {
+						pushPromises.push(
+							this.pushDelete({
+								table,
+								id: item.id,
+								remote_id: item.remote_id,
+							}),
+						);
+						break;
+					}
+				}
+			}
+			const responses = await Promise.allSettled(pushPromises);
 		}
 	}
 }
