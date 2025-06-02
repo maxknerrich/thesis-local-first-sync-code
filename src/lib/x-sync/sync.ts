@@ -1,140 +1,128 @@
 import type Dexie from 'dexie';
 import { createManager, type Manager } from 'tinytick';
-import type { Mapper } from './mapper';
 
-interface OfflineError {
-	type: 'offline';
-	error: Error;
-}
-interface AbortError {
-	type: 'aborted';
-	error: Error;
-}
-
-type SyncError = OfflineError | AbortError;
-
-type Result =
+type Result<T> =
 	| {
-			success: null;
-			error: SyncError;
+			data: T;
+			error: null;
 	  }
 	| {
-			success: true;
-			error: null;
+			data: null;
+			error: Error;
 	  };
 
-const states = {
-	connection: {
-		offline: { next: 'online' },
-		online: { next: 'offline' },
-	},
-	sync: {
-		idle: { next: 'syncing' },
-		syncing: { next: 'synced' },
-		synced: { next: 'syncing' },
-	},
-};
+interface PullItem {
+	remote_id: string;
+	[key: string]: unknown;
+}
+export interface Object extends PullItem {
+	id: number;
+}
 
-type ConnectionState = keyof typeof states.connection;
-type SyncState = keyof typeof states.sync;
+type PullResult = Object[];
 
-/**
- * Sync Manager Class to sync to remote API
- * @param {Object} options - Options for the sync manager
- * @param {number} options.syncInterval - Interval for syncing in s (default: 300s (5min))
- * @param {Dexie} options.db - Dexie database instance
- * @param {object} options.mapper - Mapper object for syncing
- * @example const sync = new XSync({ db, mapper, syncInterval: 300 });
- */
-export class XSync {
+export abstract class SyncBase {
+	protected db: Dexie;
+	protected syncedTables: string[];
 	private readonly manager: Manager;
 	private readonly sync_interval: number;
-	private readonly db: Dexie;
-	private readonly mapper: Mapper<Dexie>;
-	sync_state: SyncState = 'idle';
-	online_state: ConnectionState;
 
-	constructor({
-		sync_interval: syncInterval = 300,
-		db,
-		mapper,
-	}: { sync_interval?: number; db: Dexie; mapper: Mapper<Dexie> }) {
-		if (!navigator || !window) {
-			throw new Error('Not running in a browser or navigator is not available');
-		}
+	constructor(db: Dexie) {
 		this.db = db;
-		this.mapper = mapper;
+		this.syncedTables = db._syncedStores;
 		this.manager = createManager();
-		this.sync_interval = syncInterval * 1000; // convert to ms
-
-		window.addEventListener('online', this.handleOnline.bind(this));
-		window.addEventListener('offline', this.handleOffline.bind(this));
+		this.sync_interval = 1 * 1000; // 1 second for testing, change to 5 minutes (300000) in production
 
 		this.manager.setTask(
 			'sync',
 			async (_, signal) => this.sync(signal),
 			'syncHandler',
 			{
-				maxDuration: 30 * 1000,
+				maxDuration: 30 * 1000, // 30 seconds
 				retryDelay: this.sync_interval,
 				repeatDelay: this.sync_interval,
 			},
 		);
-
-		if (!navigator.onLine) {
-			this.online_state = 'offline';
-			this.manager.stop();
-			return;
-		}
-		this.online_state = 'online';
-		this.manager.start();
+		this.manager.setTask(
+			'syncTable',
+			async (table) => this.syncTable(table as keyof typeof this.db),
+			'syncHandler',
+		);
+		this.manager.scheduleTaskRun('sync');
 	}
 
-	// Separate methods for handling events
-	private handleOnline(_event: Event): void {
-		this.online_state = states.connection[this.online_state]
-			.next as ConnectionState;
-		this.manager.start();
-	}
+	abstract pullData(table: string, since?: Date): Promise<Result<PullResult>>;
+	abstract pushCreate(table: string, data: unknown): Promise<Result<Object>>;
+	abstract pushUpdate(table: string, data: unknown): Promise<Result<Object>>;
+	abstract pushDelete(table: string, id: unknown): Promise<Result<Object>>;
 
-	private handleOffline(_event: Event): void {
-		this.online_state = states.connection[this.online_state]
-			.next as ConnectionState;
-		this.manager.stop(true);
-	}
-
-	/**
-	 * Cleanup event listeners on destruction
-	 */
-	destroy() {
-		window.removeEventListener('online', this.handleOnline);
-		window.removeEventListener('offline', this.handleOffline);
-		this.manager.stop(true);
-	}
-	/**
-	 * Sync method to sync to remote API
-	 */
-	async sync(signal: AbortSignal) {
+	protected async sync(signal: AbortSignal): Promise<void> {
 		if (signal.aborted) {
 			return;
 		}
-		if (this.online_state === 'offline') {
-			return;
+		for (const table of this.syncedTables) {
+			this.manager.scheduleTaskRun('syncTable', table);
 		}
-		if (this.sync_state === 'syncing') {
-			return;
-		}
-		this.sync_state = states.sync[this.sync_state].next as SyncState;
-		this.manager.setTask;
 	}
 
-	static getInitialState({
-		db,
-		table,
-		object_id,
-	}: {
-		db: Dexie;
-		table: string;
-		object_id: number;
-	}) {}
+	private static mergeItems(
+		remoteItem: PullItem,
+		localItem: Object | undefined,
+	): Object | PullItem {
+		if (!localItem) return remoteItem;
+		return {
+			...localItem,
+			...remoteItem,
+		};
+	}
+
+	protected async syncTable(table: keyof typeof this.db) {
+		const remoteData = await this.pullData(table);
+
+		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
+
+		if (remoteData.error) {
+			return;
+		}
+
+		const writeLogPromise = this.db._writeLog
+			.where('table')
+			.equals(table)
+			.toArray();
+
+		// only read from database if there is remote data
+		const localRemotePromise =
+			remoteData.data.length > 0
+				? (localTable
+						.where('remote_id')
+						.anyOf(remoteData.data.map((item) => item.remote_id))
+						.toArray() as Promise<Object[]>)
+				: Promise.resolve([]);
+
+		const [localRemoteItems, writeLog] = await Promise.all([
+			localRemotePromise,
+			writeLogPromise,
+		]);
+
+		// No updates for anyone
+		if (remoteData.data.length === 0 && writeLog.length === 0) {
+			return;
+		}
+
+		//TODO increase merge performance through hashing
+		if (writeLog.length === 0) {
+			//merge remote data with the local data if there is a local data
+			let mergedData = [];
+			for (const remoteItem of remoteData.data) {
+				const localItem = localRemoteItems.find(
+					(item) => item.remote_id === remoteItem.remote_id,
+				);
+				mergedData.push(SyncBase.mergeItems(remoteItem, localItem));
+			}
+			this.db.transaction('rw', localTable, async () => {
+				await localTable.bulkPut(mergedData);
+			});
+			return;
+		}
+	}
 }

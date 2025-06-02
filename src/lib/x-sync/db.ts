@@ -19,7 +19,7 @@ export type SyncStore<T, id extends keyof T> = EntityTable<T & SyncFields, id>;
 declare module 'dexie' {
 	interface Dexie {
 		_writeLog: EntityTable<WriteLogEntry, 'number'>;
-		syncedStores: string[];
+		_syncedStores: string[];
 	}
 	interface Version {
 		stores<T extends { [key: string]: string }>(
@@ -35,7 +35,7 @@ export function make_sync_store(indexes: string) {
 	return `${indexes}, remote_id`;
 }
 export function X_Sync_Addon_Dexie(db: Dexie) {
-	db.syncedStores = [];
+	db._syncedStores = [];
 	/**
 	 * Override the Dexie.version([version]).store method to add the _writeLog table.
 	 */
@@ -53,12 +53,12 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				}
 				syncConfig.sync.forEach((store) => {
 					// check if store is already in db.syncedStores
-					if (db.syncedStores.includes(store.toString())) {
+					if (db._syncedStores.includes(store.toString())) {
 						return;
 					}
 					// check if store is already in stores
 					if (stores[store]) {
-						db.syncedStores.push(store.toString());
+						db._syncedStores.push(store.toString());
 						stores[store] = make_sync_store(stores[store]) as T[keyof T];
 					}
 				});
@@ -82,7 +82,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 					return original.apply(this, args);
 				}
 				// check if table has index remote_id and if not, call the original method
-				const isSyncedStore = db.syncedStores.includes(this.name);
+				const isSyncedStore = db._syncedStores.includes(this.name);
 				if (!isSyncedStore) {
 					return original.apply(this, args);
 				}
@@ -116,7 +116,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				if (this.name === '_writeLog') {
 					return original.apply(this, args);
 				}
-				const isSyncedStore = db.syncedStores.includes(this.name);
+				const isSyncedStore = db._syncedStores.includes(this.name);
 				if (!isSyncedStore) {
 					return original.apply(this, args);
 				}
@@ -150,7 +150,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				if (this.name === '_writeLog') {
 					return original.apply(this, args);
 				}
-				const isSyncedStore = db.syncedStores.includes(this.name);
+				const isSyncedStore = db._syncedStores.includes(this.name);
 				if (!isSyncedStore) {
 					return original.apply(this, args);
 				}
