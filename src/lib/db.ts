@@ -2,7 +2,7 @@ import { X_Sync_Addon_Dexie } from '$lib/x-sync';
 import { Dexie, type EntityTable } from 'dexie';
 import type { Comment, Issue, Project, User } from './schema';
 
-const db = new Dexie('localissuedb', {
+const db = new Dexie('LocalIssueDB', {
 	addons: [X_Sync_Addon_Dexie],
 }) as Dexie & {
 	issues: EntityTable<Issue, 'id'>;

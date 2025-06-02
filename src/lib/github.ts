@@ -5,7 +5,6 @@ import type * as Schema from '$lib/schema';
 
 import { type TDateISO, validateISO861Date } from '$lib/types/date';
 import { paginatedFetch, safeFetch } from '$lib/utils';
-import type { type } from 'arktype';
 
 const BASIC_HEADERS = {
 	Accept: 'application/vnd.github.text+json',
