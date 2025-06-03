@@ -22,6 +22,16 @@ declare module 'dexie' {
 		_syncedStores: string[];
 	}
 	interface Version {
+		/**
+		 * Override the stores method to add the _writeLog table and sync fields to the stores.
+		 * @param stores - The stores to be added to the version.
+		 * @param syncConfig.sync - An array of store names that should be synced.
+		 * @example
+		 * db.version(1).stores(
+		 * 	{ issues: '++id, title, description, status, priority, github_number, project_id'},
+		 * 	{ sync: ['issues'] }
+		 * );
+		 */
 		stores<T extends { [key: string]: string }>(
 			this: Version,
 			stores: T,
@@ -160,7 +170,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 					async () => {
 						const result = await original.apply(this, args);
 						await db._writeLog.add({
-							object_id: args[0] as string,
+							object_id: args[0] as number,
 							table: this.name,
 							method: 'delete',
 							old_data: args[0] as object,

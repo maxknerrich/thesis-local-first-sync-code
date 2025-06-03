@@ -29,21 +29,37 @@ type TableMetadata =
 	  }
 	| { lastSync: Date; status: 'syncing' | 'synced' };
 
+interface syncConfig {
+	[key: string]: {
+		mode: 'manual' | 'auto';
+		syncInterval?: number; // in seconds
+	};
+}
+
 export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	protected db: TBD;
 	protected syncedTables: string[];
 	private readonly manager: Manager;
-	private readonly sync_interval: number;
+	private readonly default_interval = 5 * 60 * 1000;
 	// private readonly listener;
 	private lastSync: Map<string, TableMetadata>;
+	private syncConfig?: syncConfig;
 	private status: 'idle' | 'syncing' | 'synced' = 'idle';
 
-	constructor({ db, syncOrder }: { db: TBD; syncOrder?: string[] }) {
+	constructor({ db, syncConfig }: { db: TBD; syncConfig?: syncConfig }) {
 		this.db = db;
-		this.syncedTables = syncOrder ?? db._syncedStores;
+		this.syncedTables = db._syncedStores;
 		this.manager = createManager();
-		this.sync_interval = 1 * 1000; // 1 second for testing, change to 5 minutes (300000) in production
-
+		if (syncConfig) {
+			Object.keys(syncConfig).forEach((table) => {
+				if (!this.syncedTables.includes(table)) {
+					throw new Error(
+						`Table ${table} is not a synced table in the database.`,
+					);
+				}
+			});
+			this.syncConfig = syncConfig;
+		}
 		this.manager.setTask(
 			'sync',
 			async (_, signal) => this.sync(signal),
@@ -117,6 +133,11 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		}
 		console.log('Starting sync process...');
 		for (const table of this.syncedTables) {
+			const syncConfig = this.syncConfig?.[table];
+			if (syncConfig?.mode === 'manual') {
+				console.log(`Skipping sync for table ${table} (manual mode)`);
+				continue;
+			}
 			const lastSync = this.lastSync.get(table)?.lastSync;
 
 			if (!lastSync) continue;
@@ -129,7 +150,10 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			const differenceInMinutes =
 				Math.abs(Date.now() - lastSync.getTime()) / 60000;
 
-			if (differenceInMinutes <= 5) {
+			if (
+				differenceInMinutes <=
+				(syncConfig?.syncInterval ?? this.default_interval)
+			) {
 				continue;
 			}
 
@@ -138,14 +162,11 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	}
 
 	private static mergeItems(
-		remoteItem: PullItem,
+		remoteItem: PullItem | Partial<PullItem>,
 		localItem: Object | undefined,
 	): Object | PullItem {
-		if (!localItem) return remoteItem;
-		return {
-			...localItem,
-			...remoteItem,
-		};
+		if (!localItem) return remoteItem as PullItem;
+		return Object.assign(localItem, remoteItem);
 	}
 	private static determineAction(
 		events: WriteLogEntry[],
@@ -157,6 +178,14 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			return 'create';
 		}
 		return 'update';
+	}
+
+	private static calulateOldItem(item: Object, events: WriteLogEntry[]) {
+		const old_data = events.reduce(
+			(acc, event) => Object.assign(acc, event.old_data),
+			{},
+		);
+		return Object.assign(item, old_data);
 	}
 
 	protected async syncTable(table: keyof TBD) {
@@ -253,7 +282,12 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				}
 			}
 			const responses = await Promise.allSettled(pushPromises);
+			this.lastSync.set(table, { lastSync: new Date(), status: 'synced' });
+			return;
 		}
-		this.lastSync.set(table, { lastSync: new Date(), status: 'synced' });
+		let remoteWriteLog = new Map<string, Partial<PullItem>>();
+		for (const item of remoteData.data) {
+			// Item has no local writes directly apply
+		}
 	}
 }
