@@ -21,6 +21,9 @@ declare module 'dexie' {
 		_writeLog: EntityTable<WriteLogEntry, 'number'>;
 		_syncedStores: string[];
 	}
+	interface Transaction {
+		_isSyncTransaction?: boolean;
+	}
 	interface Version {
 		/**
 		 * Override the stores method to add the _writeLog table and sync fields to the stores.
@@ -87,8 +90,11 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 		db.Table.prototype.add,
 		(original) =>
 			async function (this: Dexie.Table, ...args: unknown[]) {
-				// If the table is _writeLog, call the original method
-				if (this.name === '_writeLog') {
+				// If the table is _writeLog or if the current transaction is a sync transaction, call the original method
+				if (
+					this.name === '_writeLog' ||
+					Dexie.currentTransaction?._isSyncTransaction
+				) {
 					return original.apply(this, args);
 				}
 				// check if table has index remote_id and if not, call the original method
@@ -122,8 +128,11 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 		db.Table.prototype.put,
 		(original) =>
 			async function (this: Dexie.Table, ...args: unknown[]) {
-				// If the table is _writeLog, call the original method
-				if (this.name === '_writeLog') {
+				// If the table is _writeLog or if the current transaction is a sync transaction, call the original method
+				if (
+					this.name === '_writeLog' ||
+					Dexie.currentTransaction?._isSyncTransaction
+				) {
 					return original.apply(this, args);
 				}
 				const isSyncedStore = db._syncedStores.includes(this.name);
@@ -153,8 +162,11 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 		db.Table.prototype.update,
 		(original) =>
 			async function (this: Dexie.Table, ...args: unknown[]) {
-				// If the table is _writeLog, call the original method
-				if (this.name === '_writeLog') {
+				// If the table is _writeLog or if the current transaction is a sync transaction, call the original method
+				if (
+					this.name === '_writeLog' ||
+					Dexie.currentTransaction?._isSyncTransaction
+				) {
 					return original.apply(this, args);
 				}
 				const isSyncedStore = db._syncedStores.includes(this.name);
@@ -198,8 +210,11 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 		db.Table.prototype.delete,
 		(original) =>
 			async function (this: Dexie.Table, ...args: unknown[]) {
-				// If the table is _writeLog, call the original method
-				if (this.name === '_writeLog') {
+				// If the table is _writeLog or if the current transaction is a sync transaction, call the original method
+				if (
+					this.name === '_writeLog' ||
+					Dexie.currentTransaction?._isSyncTransaction
+				) {
 					return original.apply(this, args);
 				}
 				const isSyncedStore = db._syncedStores.includes(this.name);
