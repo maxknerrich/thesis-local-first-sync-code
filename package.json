@@ -16,6 +16,8 @@
 		"@sveltejs/adapter-auto": "^6.0.0",
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
+		"@types/bun": "^1.2.15",
+		"fake-indexeddb": "^6.0.1",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",
 		"typescript": "^5.0.0",
@@ -25,5 +27,8 @@
 		"arktype": "^2.1.20",
 		"dexie": "^4.0.11",
 		"tinytick": "^1.2.8"
+	},
+	"patchedDependencies": {
+		"dexie@4.0.11": "patches/dexie@4.0.11.patch"
 	}
 }
