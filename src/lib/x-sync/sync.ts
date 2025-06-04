@@ -1,49 +1,16 @@
-import { write } from 'bun';
 import type Dexie from 'dexie';
 import { createManager, type Manager } from 'tinytick';
-import type { WriteLogEntry } from './entry';
+import type {
+	ConflictItem,
+	DBObject,
+	PullItem,
+	PullResult,
+	Result,
+	syncConfig,
+	TableMetadata,
+	WriteLogEntry,
+} from './types';
 import { diffObject } from './utils';
-
-export type Result<T> =
-	| {
-			data: T;
-			error: null;
-	  }
-	| {
-			data: null;
-			error: Error;
-	  };
-
-interface PullItem {
-	remote_id: string;
-	[key: string]: unknown;
-}
-export interface DBObject extends PullItem {
-	id: number;
-}
-
-export type PullResult = PullItem[];
-
-type TableMetadata =
-	| {
-			lastSync: 'never';
-			status: 'idle';
-	  }
-	| { lastSync: Date; status: 'syncing' | 'synced' };
-
-interface syncConfig {
-	[key: string]: {
-		mode: 'manual' | 'auto';
-		syncInterval?: number; // in seconds
-		path?: 'r' | 'w' | 'rw'; // read, write, or both
-	};
-}
-
-interface ConflictItem {
-	localItem: DBObject;
-	remoteItem: PullItem;
-	writeLog: WriteLogEntry[];
-}
 
 export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	protected db: TBD;
@@ -212,7 +179,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		localItems: DBObject[];
 	}) {
 		const categories = {
-			newLocal: [] as Omit<DBObject[], 'remote_id'>,
+			newLocal: [] as Omit<DBObject, 'remote_id'>[],
 			newRemote: [] as PullItem[],
 			updatedLocal: [] as { remote_id: string; data: Partial<DBObject> }[],
 			updatedRemote: [] as { id: number; data: Partial<PullItem> }[],

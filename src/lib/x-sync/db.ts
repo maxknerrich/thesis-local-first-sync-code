@@ -5,8 +5,7 @@
  */
 
 import { Dexie, type EntityTable } from 'dexie';
-import type { WriteLogEntry } from './entry';
-import { diffObject } from './utils';
+import type { DBObject, WriteLogEntry } from './types';
 
 interface SyncFields {
 	remote_id: number;
@@ -140,8 +139,8 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 							object_id: result,
 							table: this.name,
 							method: 'update',
-							old_data: args[0] as object,
-							new_data: args[1] as object,
+							old_data: args[0] as DBObject | null,
+							new_data: args[1] as DBObject,
 						});
 						return result;
 					},
@@ -166,7 +165,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 					'rw',
 					['_writeLog', this.name],
 					async () => {
-						let oldData = {} as Record<string, unknown>;
+						let oldData = {} as DBObject;
 						const result = await this.where('id')
 							.equals(args[0] as number)
 							.modify((value, ref) => {
@@ -183,7 +182,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 							table: this.name,
 							method: 'update',
 							old_data: oldData,
-							new_data: args[1] as object,
+							new_data: args[1] as DBObject,
 						});
 						return result;
 					},
@@ -211,7 +210,7 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 					'rw',
 					['_writeLog', this.name],
 					async () => {
-						let oldData = {} as Record<string, unknown>;
+						let oldData = {} as DBObject;
 						const result = await this.where('id')
 							.equals(args[0] as number)
 							.modify((value, ref) => {
