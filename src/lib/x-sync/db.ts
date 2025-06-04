@@ -6,6 +6,7 @@
 
 import { Dexie, type EntityTable } from 'dexie';
 import type { WriteLogEntry } from './entry';
+import { diffObject } from './utils';
 
 interface SyncFields {
 	remote_id: number;
@@ -149,6 +150,48 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 			},
 	);
 
+	db.Table.prototype.update = Dexie.override(
+		db.Table.prototype.update,
+		(original) =>
+			async function (this: Dexie.Table, ...args: unknown[]) {
+				// If the table is _writeLog, call the original method
+				if (this.name === '_writeLog') {
+					return original.apply(this, args);
+				}
+				const isSyncedStore = db._syncedStores.includes(this.name);
+				if (!isSyncedStore) {
+					return original.apply(this, args);
+				}
+				const result = db.transaction(
+					'rw',
+					['_writeLog', this.name],
+					async () => {
+						let oldData = {} as Record<string, unknown>;
+						const result = await this.where('id')
+							.equals(args[0] as number)
+							.modify((value, ref) => {
+								Object.keys(args[1] as object).forEach((key) => {
+									if (Object.hasOwn(value, key)) {
+										oldData[key] = value[key];
+									}
+								});
+								ref.value = Object.assign(value, args[1]);
+							});
+						// object.modify(args[1] as object);
+						await db._writeLog.add({
+							object_id: args[0] as number,
+							table: this.name,
+							method: 'update',
+							old_data: oldData,
+							new_data: args[1] as object,
+						});
+						return result;
+					},
+				);
+				return result;
+			},
+	);
+
 	/**
 	 * Override the Dexie.[table].delete method to log changes to the _writeLog table.
 	 */
@@ -168,12 +211,18 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 					'rw',
 					['_writeLog', this.name],
 					async () => {
-						const result = await original.apply(this, args);
+						let oldData = {} as Record<string, unknown>;
+						const result = await this.where('id')
+							.equals(args[0] as number)
+							.modify((value, ref) => {
+								oldData = value;
+								delete ref.value;
+							});
 						await db._writeLog.add({
 							object_id: args[0] as number,
 							table: this.name,
 							method: 'delete',
-							old_data: args[0] as object,
+							old_data: oldData,
 							new_data: null,
 						});
 						return result;
