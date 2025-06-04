@@ -12,6 +12,21 @@ import type {
 } from './types';
 import { diffObject } from './utils';
 
+type CategoriesObject = {
+	newLocal: { id: number; data: Omit<DBObject, 'remote_id' | 'id'> }[];
+	newRemote: PullItem[];
+	updatedLocal: { remote_id: string; changes: Partial<DBObject> }[];
+	updatedRemote: { key: number; changes: Partial<PullItem> }[];
+	deletedLocal: string[];
+	conflicts: {
+		key: number;
+		remote_id: string;
+		changes: Partial<DBObject>;
+	}[];
+};
+
+type CreateReturn = { key: number; changes: Partial<PullItem> };
+
 export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	protected db: TBD;
 	protected syncedTables: string[];
@@ -71,25 +86,27 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	}): Promise<Result<PullResult>>;
 	abstract pushCreate({
 		table,
+		id,
 		data,
 	}: {
 		table: string;
+		id: number;
 		data: DBObject;
-	}): Promise<void>;
+	}): Promise<CreateReturn>;
 	abstract pushUpdate({
 		table,
+		remote_id,
 		data,
 	}: {
 		table: string;
+		remote_id: string;
 		data: DBObject;
 	}): Promise<void>;
 	abstract pushDelete({
 		table,
-		id,
 		remote_id,
 	}: {
 		table: string;
-		id: number;
 		remote_id: number | string;
 	}): Promise<void>;
 
@@ -178,17 +195,13 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		remoteData: PullResult;
 		localItems: DBObject[];
 	}) {
-		const categories = {
-			newLocal: [] as Omit<DBObject, 'remote_id'>[],
-			newRemote: [] as PullItem[],
-			updatedLocal: [] as { remote_id: string; data: Partial<DBObject> }[],
-			updatedRemote: [] as { id: number; data: Partial<PullItem> }[],
-			deletedLocal: [] as string[],
-			conflicts: [] as {
-				id: number;
-				remote_id: string;
-				data: Partial<DBObject>;
-			}[],
+		const categories: CategoriesObject = {
+			newLocal: [],
+			newRemote: [],
+			updatedLocal: [],
+			updatedRemote: [],
+			deletedLocal: [],
+			conflicts: [],
 		};
 		const seenIDs = new Set<number>();
 		for (const remoteItem of remoteData) {
@@ -200,9 +213,9 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				seenIDs.add(localItem.id);
 				if (writeLog) {
 					categories.conflicts.push({
-						id: localItem.id,
+						key: localItem.id,
 						remote_id: localItem.remote_id,
-						data: this.handleConflict({
+						changes: this.handleConflict({
 							localItem,
 							remoteItem,
 							writeLog,
@@ -211,8 +224,8 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 					continue;
 				}
 				categories.updatedRemote.push({
-					id: localItem.id,
-					data: diffObject<PullItem>(localItem, remoteItem),
+					key: localItem.id,
+					changes: diffObject<PullItem>(localItem, remoteItem),
 				});
 				continue;
 			}
@@ -221,7 +234,8 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		for (const [key, value] of writeLogPerObject.entries()) {
 			if (seenIDs.has(key)) continue;
 			if (value.find((entry) => entry.method === 'create')) {
-				categories.newLocal.push(this.materialize(value));
+				const { id, ...data } = this.materialize(value);
+				categories.newLocal.push({ id, data });
 				continue;
 			}
 			const deltedEntry = value.find((entry) => entry.method === 'delete');
@@ -234,10 +248,9 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			}
 			categories.updatedLocal.push({
 				remote_id: localItems.find((e) => e.id === key)?.remote_id as string,
-				data: this.materialize(value),
+				changes: this.materialize(value),
 			});
 		}
-
 		return categories;
 	}
 
@@ -247,6 +260,68 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			{},
 		);
 		return data as DBObject;
+	}
+
+	private async applyChanges(categories: CategoriesObject, table: keyof TBD) {
+		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
+		const {
+			newLocal,
+			newRemote,
+			updatedLocal,
+			updatedRemote,
+			deletedLocal,
+			conflicts,
+		} = categories;
+
+		let requests = [];
+		let localUpdatesFromRemote: CreateReturn[] = [];
+
+		for (const item of newLocal) {
+			requests.push(
+				this.pushCreate({ table: 'issues', id: item.id, data: item.data }).then(
+					(item) => localUpdatesFromRemote.push(item),
+				),
+			);
+		}
+		for (const item of updatedLocal) {
+			requests.push(
+				this.pushUpdate({
+					table: 'issues',
+					remote_id: item.remote_id,
+					data: item.changes as DBObject,
+				}),
+			);
+		}
+		for (const item of deletedLocal) {
+			requests.push(
+				this.pushDelete({
+					table: 'issues',
+					remote_id: item,
+				}),
+			);
+		}
+		for (const item of conflicts) {
+			requests.push(
+				this.pushUpdate({
+					table: 'issues',
+					remote_id: item.remote_id,
+					data: item.changes as DBObject,
+				}),
+			);
+		}
+		await Promise.all(requests);
+
+		await this.db.transaction('rw', localTable, async (trans) => {
+			trans._isSyncTransaction = true;
+			localTable.bulkAdd(newRemote);
+			localTable.bulkUpdate(updatedRemote);
+			if (localUpdatesFromRemote.length > 0) {
+				localTable.bulkUpdate(localUpdatesFromRemote);
+			}
+			localTable.bulkUpdate(
+				conflicts.map((item) => ({ key: item.key, changes: item.changes })),
+			);
+		});
 	}
 
 	async syncTable(table: keyof TBD) {
@@ -271,13 +346,6 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			this.markSynced(table);
 			return;
 		}
-		// if (remoteData.data.length === 0) {
-		// 	return; //TODO
-		// }
-		// if (writeLog.length === 0) {
-		// 	return; //TODO
-		// }
-
 		const writeLogPerObject = this.getWritesPerObject(writeLog);
 		const localItems = (await localTable
 			.where('id')
@@ -290,7 +358,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			remoteData: remoteData.data,
 			localItems,
 		});
-
-		return categories;
+		await this.applyChanges(categories, table);
+		this.markSynced(table);
 	}
 }
