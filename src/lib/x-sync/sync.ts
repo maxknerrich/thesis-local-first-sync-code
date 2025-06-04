@@ -1,6 +1,8 @@
+import { write } from 'bun';
 import type Dexie from 'dexie';
 import { createManager, type Manager } from 'tinytick';
 import type { WriteLogEntry } from './entry';
+import { diffObject } from './utils';
 
 export type Result<T> =
 	| {
@@ -16,7 +18,7 @@ interface PullItem {
 	remote_id: string;
 	[key: string]: unknown;
 }
-export interface Object extends PullItem {
+export interface DBObject extends PullItem {
 	id: number;
 }
 
@@ -33,7 +35,14 @@ interface syncConfig {
 	[key: string]: {
 		mode: 'manual' | 'auto';
 		syncInterval?: number; // in seconds
+		path?: 'r' | 'w' | 'rw'; // read, write, or both
 	};
+}
+
+interface ConflictItem {
+	localItem: DBObject;
+	remoteItem: PullItem;
+	writeLog: WriteLogEntry[];
 }
 
 export abstract class SyncBase<TBD extends Dexie = Dexie> {
@@ -41,48 +50,35 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	protected syncedTables: string[];
 	private readonly manager: Manager;
 	private readonly default_interval = 5 * 60 * 1000;
-	// private readonly listener;
 	private lastSync: Map<string, TableMetadata>;
 	private syncConfig?: syncConfig;
-	private status: 'idle' | 'syncing' | 'synced' = 'idle';
 
 	constructor({ db, syncConfig }: { db: TBD; syncConfig?: syncConfig }) {
 		this.db = db;
-		this.syncedTables = db._syncedStores;
 		this.manager = createManager();
 		if (syncConfig) {
 			Object.keys(syncConfig).forEach((table) => {
-				if (!this.syncedTables.includes(table)) {
+				if (!this.db._syncedStores.includes(table)) {
 					throw new Error(
 						`Table ${table} is not a synced table in the database.`,
 					);
 				}
 			});
 			this.syncConfig = syncConfig;
+			this.syncedTables = Object.keys(syncConfig);
+		} else {
+			this.syncedTables = db._syncedStores;
 		}
 		this.manager.setTask(
 			'sync',
 			async (_, signal) => this.sync(signal),
 			'syncHandler',
-			// {
-			// 	maxDuration: 30 * 1000, // 30 seconds
-			// 	retryDelay: this.sync_interval,
-			// 	repeatDelay: this.sync_interval,
-			// },
 		);
 		this.manager.setTask(
 			'syncTable',
 			async (table) => this.syncTable(table as keyof typeof this.db),
 			'syncHandler',
 		);
-		// this.listener = this.manager.addRunningTaskRunIdsListener((manager) => {
-		// 	if (manager.getRunningTaskRunIds().length > 0) {
-		// 		this.status = 'syncing';
-		// 		return;
-		// 	}
-		// 	this.status = 'synced';
-		// 	this.lastSync = new Date().toISOString();
-		// });
 		this.lastSync = new Map();
 		for (const table of this.syncedTables) {
 			this.lastSync.set(table, { lastSync: 'never', status: 'idle' });
@@ -102,21 +98,24 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		return lastSync;
 	}
 
-	abstract pullData({ table }: { table: string }): Promise<Result<PullResult>>;
+	abstract pullData(args: {
+		table: string;
+		since?: Date;
+	}): Promise<Result<PullResult>>;
 	abstract pushCreate({
 		table,
 		data,
 	}: {
 		table: string;
-		data: Object;
-	}): Promise<Result<Object>>;
+		data: DBObject;
+	}): Promise<void>;
 	abstract pushUpdate({
 		table,
 		data,
 	}: {
 		table: string;
-		data: Object;
-	}): Promise<Result<Object>>;
+		data: DBObject;
+	}): Promise<void>;
 	abstract pushDelete({
 		table,
 		id,
@@ -125,13 +124,12 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		table: string;
 		id: number;
 		remote_id: number | string;
-	}): Promise<Result<Object>>;
+	}): Promise<void>;
 
 	protected async sync(signal: AbortSignal): Promise<void> {
 		if (signal.aborted) {
 			return;
 		}
-		console.log('Starting sync process...');
 		for (const table of this.syncedTables) {
 			const syncConfig = this.syncConfig?.[table];
 			if (syncConfig?.mode === 'manual') {
@@ -160,134 +158,172 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			this.manager.scheduleTaskRun('syncTable', table);
 		}
 	}
-
-	private static mergeItems(
-		remoteItem: PullItem | Partial<PullItem>,
-		localItem: Object | undefined,
-	): Object | PullItem {
-		if (!localItem) return remoteItem as PullItem;
-		return Object.assign(localItem, remoteItem);
-	}
-	private static determineAction(
-		events: WriteLogEntry[],
-	): 'create' | 'update' | 'delete' {
-		if (events.some((e) => e.method === 'delete')) {
-			return 'delete';
+	private getWritesPerObject(
+		writeLog: WriteLogEntry[],
+	): Map<number, WriteLogEntry[]> {
+		const writesPerObject = new Map<number, WriteLogEntry[]>();
+		for (const entry of writeLog) {
+			if (!writesPerObject.has(entry.object_id)) {
+				writesPerObject.set(entry.object_id, [entry]);
+				continue;
+			}
+			writesPerObject.get(entry.object_id)?.push(entry);
 		}
-		if (events.some((e) => e.method === 'create')) {
-			return 'create';
-		}
-		return 'update';
+		return writesPerObject;
 	}
 
-	private static calulateOldItem(item: Object, events: WriteLogEntry[]) {
-		const old_data = events.reduce(
-			(acc, event) => Object.assign(acc, event.old_data),
-			{},
-		);
+	private markSynced(table: string) {
+		this.lastSync.set(table, {
+			lastSync: new Date(),
+			status: 'synced',
+		});
+		console.log(`Table ${table} synced successfully.`);
+	}
+	private static calulateOldItem(item: DBObject, events: WriteLogEntry[]) {
+		const old_data = events
+			.toReversed()
+			.reduce((acc, event) => Object.assign(acc, event.old_data), {});
 		return Object.assign(item, old_data);
 	}
 
-	protected async syncTable(table: keyof TBD) {
-		if (typeof table !== 'string') return;
-		console.log(`Syncing table: ${table}`);
-		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
+	private handleConflict({
+		localItem,
+		remoteItem,
+		writeLog,
+	}: ConflictItem): Partial<DBObject> {
+		const oldItem = SyncBase.calulateOldItem(localItem, writeLog);
+		const remoteChanges = diffObject<PullItem>(oldItem, remoteItem);
+		const GithubEvent = {
+			new_data: remoteChanges,
+		};
+		const changes = this.materialize(
+			writeLog.concat([GithubEvent as WriteLogEntry]),
+		);
+		return changes;
+	}
 
-		const remoteData = await this.pullData({ table });
-
-		console.log(remoteData);
-
-		if (remoteData.error) {
-			return;
+	private categorizeChanges({
+		writeLogPerObject,
+		remoteData,
+		localItems,
+	}: {
+		writeLogPerObject: Map<number, WriteLogEntry[]>;
+		remoteData: PullResult;
+		localItems: DBObject[];
+	}) {
+		const categories = {
+			newLocal: [] as Omit<DBObject[], 'remote_id'>,
+			newRemote: [] as PullItem[],
+			updatedLocal: [] as { remote_id: string; data: Partial<DBObject> }[],
+			updatedRemote: [] as { id: number; data: Partial<PullItem> }[],
+			deletedLocal: [] as string[],
+			conflicts: [] as {
+				id: number;
+				remote_id: string;
+				data: Partial<DBObject>;
+			}[],
+		};
+		const seenIDs = new Set<number>();
+		for (const remoteItem of remoteData) {
+			const localItem = localItems.find(
+				(item) => item.remote_id === remoteItem.remote_id,
+			);
+			const writeLog = writeLogPerObject.get(localItem?.id ?? -1);
+			if (localItem) {
+				seenIDs.add(localItem.id);
+				if (writeLog) {
+					categories.conflicts.push({
+						id: localItem.id,
+						remote_id: localItem.remote_id,
+						data: this.handleConflict({
+							localItem,
+							remoteItem,
+							writeLog,
+						}),
+					});
+					continue;
+				}
+				categories.updatedRemote.push({
+					id: localItem.id,
+					data: diffObject<PullItem>(localItem, remoteItem),
+				});
+				continue;
+			}
+			categories.newRemote.push(remoteItem);
 		}
-		const writeLogPromise = this.db._writeLog
-			.where('table')
-			.equals(table)
-			.toArray();
+		for (const [key, value] of writeLogPerObject.entries()) {
+			if (seenIDs.has(key)) continue;
+			if (value.find((entry) => entry.method === 'create')) {
+				categories.newLocal.push(this.materialize(value));
+				continue;
+			}
+			const deltedEntry = value.find((entry) => entry.method === 'delete');
+			if (
+				deltedEntry?.old_data &&
+				Object.hasOwn(deltedEntry.old_data as DBObject, 'remote_id')
+			) {
+				categories.deletedLocal.push(deltedEntry.old_data.remote_id as string);
+				continue;
+			}
+			categories.updatedLocal.push({
+				remote_id: localItems.find((e) => e.id === key)?.remote_id as string,
+				data: this.materialize(value),
+			});
+		}
 
-		// only read from database if there is remote data
-		const localRemotePromise =
-			remoteData.data.length > 0
-				? (localTable
-						.where('remote_id')
-						.anyOf(remoteData.data.map((item) => item.remote_id))
-						.toArray() as Promise<Object[]>)
-				: Promise.resolve([]);
+		return categories;
+	}
 
-		const [localRemoteItems, writeLog] = await Promise.all([
-			localRemotePromise,
-			writeLogPromise,
+	private materialize(writeLog: WriteLogEntry[]): DBObject {
+		const data = writeLog.reduce(
+			(acc, event) => Object.assign(acc, event.new_data),
+			{},
+		);
+		return data as DBObject;
+	}
+
+	async syncTable(table: keyof TBD) {
+		if (typeof table !== 'string') {
+			throw new Error('Table name must be a string');
+		}
+		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
+		const since = this.getSince(table);
+		const fetchArgs = since ? { table, since } : { table };
+
+		const [remoteData, writeLog] = await Promise.all([
+			this.pullData(fetchArgs),
+			this.db._writeLog.where('table').equals(table).sortBy('number'),
 		]);
 
-		// No updates for anyone
+		if (remoteData.error) {
+			console.error(`Error pulling data for table ${table}:`, remoteData.error);
+			return;
+		}
 		if (remoteData.data.length === 0 && writeLog.length === 0) {
+			console.log(`No data to sync for table ${table}`);
+			this.markSynced(table);
 			return;
 		}
+		// if (remoteData.data.length === 0) {
+		// 	return; //TODO
+		// }
+		// if (writeLog.length === 0) {
+		// 	return; //TODO
+		// }
 
-		//TODO increase merge performance through hashing
-		if (writeLog.length === 0) {
-			//merge remote data with the local data if there is a local data
-			console.log(`Merging remote data with local data for table: ${table}`);
-			let mergedData = [];
-			for (const remoteItem of remoteData.data) {
-				const localItem = localRemoteItems.find(
-					(item) => item.remote_id === remoteItem.remote_id,
-				);
-				mergedData.push(SyncBase.mergeItems(remoteItem, localItem));
-			}
-			await this.db.transaction('rw', localTable, async () => {
-				await localTable.bulkPut(mergedData);
-			});
-			return;
-		}
-
-		const objectWrites = new Map<number, WriteLogEntry[]>();
-		for (const entry of writeLog) {
-			if (entry.table !== table) continue;
-			if (!objectWrites.has(entry.object_id)) {
-				objectWrites.set(entry.object_id, [entry]);
-			}
-			objectWrites.get(entry.object_id)?.push(entry);
-		}
-		const localWriteItems = localTable
+		const writeLogPerObject = this.getWritesPerObject(writeLog);
+		const localItems = (await localTable
 			.where('id')
-			.anyOf(Array.from(objectWrites.keys()))
-			.toArray() as Promise<Object[]>;
-		// TODO Test materialize vs loading the ids and then pushing
-		if (remoteData.data.length === 0) {
-			const pushPromises = [];
-			for (const item of await localWriteItems) {
-				const action = SyncBase.determineAction(
-					objectWrites.get(item.id) as WriteLogEntry[],
-				);
-				switch (action) {
-					case 'create': {
-						pushPromises.push(this.pushCreate({ table, data: item }));
-						break;
-					}
-					case 'update': {
-						pushPromises.push(this.pushUpdate({ table, data: item }));
-						break;
-					}
-					case 'delete': {
-						pushPromises.push(
-							this.pushDelete({
-								table,
-								id: item.id,
-								remote_id: item.remote_id,
-							}),
-						);
-						break;
-					}
-				}
-			}
-			const responses = await Promise.allSettled(pushPromises);
-			this.lastSync.set(table, { lastSync: new Date(), status: 'synced' });
-			return;
-		}
-		let remoteWriteLog = new Map<string, Partial<PullItem>>();
-		for (const item of remoteData.data) {
-			// Item has no local writes directly apply
-		}
+			.anyOf(Array.from(writeLogPerObject.keys()) ?? [-1])
+			.or('remote_id')
+			.anyOf(remoteData.data.map((item) => item.remote_id) ?? [-1])
+			.toArray()) as DBObject[] | [];
+		const categories = this.categorizeChanges({
+			writeLogPerObject,
+			remoteData: remoteData.data,
+			localItems,
+		});
+
+		return categories;
 	}
 }
