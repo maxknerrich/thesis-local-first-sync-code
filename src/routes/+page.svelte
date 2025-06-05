@@ -11,6 +11,10 @@
 				mode: "auto",
 				path: "rw",
 			},
+			projects: {
+				mode: "manual",
+				path: "r",
+			},
 		},
 	});
 
@@ -24,27 +28,9 @@
 		localStorage.clear();
 	}
 
-	async function createProject() {
-		await db.projects.add(
-			{
-				name: "BachelorTestProject",
-				full_name: "maxknerrich/BachelorTestProject",
-				description: "This is a test project for the bachelor thesis",
-			},
-			1,
-		);
-		await db.projects.add(
-			{
-				name: "Saturdays",
-				full_name: "maxknerrich/saturdays",
-				description: "This is a test project for the bachelor thesis",
-			},
-			1,
-		);
-	}
-
 	async function Sync() {
 		sync.syncTable("issues");
+		sync.syncTable("projects");
 	}
 
 	async function addIssue() {
@@ -79,6 +65,5 @@
 <button onclick={addIssue}>Add issue</button>
 <button onclick={updateIssue}>Update issues</button>
 <button onclick={getRepos}>Get Repos</button>
-<button onclick={createProject}>Insert Test Project</button>
 <button onclick={deleteDB}>Delete DB</button>
 <button onclick={Sync}>Sync</button>

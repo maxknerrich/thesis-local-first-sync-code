@@ -390,11 +390,9 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		});
 		if (this.syncConfig?.[table]?.path === 'r') {
 			await this.handleReadOnly({ localTable, categories });
-			this.markSynced(table);
-			await this.db._writeLog.bulkDelete(writeLog.map((entry) => entry.number));
-			return;
+		} else {
+			await this.applyChanges(categories, table);
 		}
-		await this.applyChanges(categories, table);
 		// Clear the write log for the table
 		await this.db._writeLog.bulkDelete(writeLog.map((entry) => entry.number));
 		this.markSynced(table);

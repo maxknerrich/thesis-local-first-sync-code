@@ -22,7 +22,9 @@ export class GitHubSync extends SyncBase<typeof db> {
 	}): Promise<Result<PullResult>> {
 		switch (table) {
 			case 'issues': {
-				const projects = await this.db.projects.toArray();
+				const projects = await this.db.projects
+					.filter((project) => project.active === true)
+					.toArray();
 				const issues = await Promise.all(
 					projects.map((project) =>
 						this.get_issues({
@@ -41,6 +43,25 @@ export class GitHubSync extends SyncBase<typeof db> {
 					),
 				).then((results) => results.flat());
 				return { error: null, data: issues };
+			}
+			case 'projects': {
+				const data = await paginatedFetch<
+					paths['/users/{username}/repos']['get']['responses']['200']['content']['application/json']
+				>(`https://api.github.com/user/repos`, {
+					headers: BASIC_HEADERS,
+				}).then((res) => {
+					return res.data?.map((repo) => ({
+						remote_id: repo.id.toString(),
+						full_name: repo.full_name,
+						name: repo.name,
+						description: repo.description || '',
+						active: false,
+					}));
+				});
+				if (!data) {
+					throw new Error('Failed to fetch projects from GitHub');
+				}
+				return { data, error: null };
 			}
 			default:
 				return { data: null, error: new Error(`Unknown table: ${table}`) };
