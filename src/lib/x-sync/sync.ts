@@ -14,31 +14,31 @@ import type {
 import { diffObject } from './utils';
 
 type CategoriesObject = {
-	newLocal: { id: number; data: Omit<DBObject, 'remote_id' | 'id'> }[];
+	newLocal: { item: DBObject; data: Omit<DBObject, 'remote_id' | 'id'> }[];
 	newRemote: PullItem[];
-	updatedLocal: { remote_id: string; changes: Partial<DBObject> }[];
+	updatedLocal: { item: DBObject; changes: Partial<DBObject> }[];
 	updatedRemote: { key: number; changes: Partial<PullItem> }[];
-	deletedLocal: string[];
+	deletedLocal: DBObject[];
 	conflicts: {
 		key: number;
-		remote_id: string;
+		item: DBObject;
 		changes: Partial<DBObject>;
 	}[];
 };
 
 type CreateItem = {
 	table: string;
-	id: number;
 	data: Omit<DBObject, 'remote_id' | 'id'>;
+	item: DBObject;
 };
 type UpdateItem = {
 	table: string;
-	remote_id: string;
 	data: DBObject;
+	item: DBObject;
 };
 type DeleteItem = {
 	table: string;
-	remote_id: number | string;
+	item: DBObject;
 };
 
 type CreateReturn = { key: number; changes: Partial<PullItem> };
@@ -100,9 +100,9 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		table: string;
 		since?: Date;
 	}): Promise<Result<PullResult>>;
-	abstract pushCreate({ table, id, data }: CreateItem): Promise<CreateReturn>;
-	abstract pushUpdate({ table, remote_id, data }: UpdateItem): Promise<void>;
-	abstract pushDelete({ table, remote_id }: DeleteItem): Promise<void>;
+	abstract pushCreate({ table, item, data }: CreateItem): Promise<CreateReturn>;
+	abstract pushUpdate({ table, item, data }: UpdateItem): Promise<void>;
+	abstract pushDelete({ table, item }: DeleteItem): Promise<void>;
 
 	protected async sync(signal: AbortSignal): Promise<void> {
 		if (signal.aborted) {
@@ -208,7 +208,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				if (writeLog) {
 					categories.conflicts.push({
 						key: localItem.id,
-						remote_id: localItem.remote_id,
+						item: localItem,
 						changes: this.handleConflict({
 							localItem,
 							remoteItem,
@@ -227,9 +227,10 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		}
 		for (const [key, value] of writeLogPerObject.entries()) {
 			if (seenIDs.has(key)) continue;
+			const localItem = localItems.find((item) => item.id === key) as DBObject;
 			if (value.find((entry) => entry.method === 'create')) {
-				const { id, ...data } = this.materialize(value);
-				categories.newLocal.push({ id, data });
+				const data = this.materialize(value);
+				categories.newLocal.push({ item: localItem, data });
 				continue;
 			}
 			const deltedEntry = value.find((entry) => entry.method === 'delete');
@@ -237,11 +238,11 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				deltedEntry?.old_data &&
 				Object.hasOwn(deltedEntry.old_data as DBObject, 'remote_id')
 			) {
-				categories.deletedLocal.push(deltedEntry.old_data.remote_id as string);
+				categories.deletedLocal.push(localItem);
 				continue;
 			}
 			categories.updatedLocal.push({
-				remote_id: localItems.find((e) => e.id === key)?.remote_id as string,
+				item: localItem,
 				changes: this.materialize(value),
 			});
 		}
@@ -293,7 +294,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		for (const item of newLocal) {
 			pushQueue.addItem({
 				type: 'create',
-				data: { table: 'issues', id: item.id, data: item.data },
+				data: { table: 'issues', item: item.item, data: item.data },
 			});
 		}
 		for (const item of updatedLocal) {
@@ -301,7 +302,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				type: 'update',
 				data: {
 					table: 'issues',
-					remote_id: item.remote_id,
+					item: item.item,
 					data: item.changes as DBObject,
 				},
 			});
@@ -311,7 +312,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				type: 'delete',
 				data: {
 					table: 'issues',
-					remote_id: item,
+					item,
 				},
 			});
 		}
@@ -320,7 +321,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				type: 'update',
 				data: {
 					table: 'issues',
-					remote_id: item.remote_id,
+					item: item.item,
 					data: item.changes as DBObject,
 				},
 			});
