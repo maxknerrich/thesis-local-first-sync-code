@@ -20,16 +20,13 @@ export class GitHubSync extends SyncBase<typeof db> {
 		table: string;
 		since?: Date;
 	}): Promise<Result<PullResult>> {
-		console.log(BASIC_HEADERS);
 		switch (table) {
 			case 'issues': {
-				const projects = await this.db.projects
-					.toArray()
-					.then((projects) => projects.map((p) => p.full_name));
+				const projects = await this.db.projects.toArray();
 				const issues = await Promise.all(
 					projects.map((project) =>
 						this.get_issues({
-							fullname: project,
+							fullname: project.full_name,
 							since: since,
 						}).then((res) => {
 							return res.map((issue) => ({
@@ -38,11 +35,12 @@ export class GitHubSync extends SyncBase<typeof db> {
 								title: issue.title,
 								description: issue.body,
 								status: issue.state === 'open' ? 0 : 2,
+								project_id: project.id,
 							}));
 						}),
 					),
-				);
-				return { error: null, data: issues.flat() };
+				).then((results) => results.flat());
+				return { error: null, data: issues };
 			}
 			default:
 				return { data: null, error: new Error(`Unknown table: ${table}`) };
@@ -68,7 +66,9 @@ export class GitHubSync extends SyncBase<typeof db> {
 				>(`https://api.github.com/repos/${project?.full_name}/issues`, {
 					method: 'POST',
 					headers: BASIC_HEADERS,
-					body: JSON.stringify(data),
+					body: JSON.stringify(
+						this.mapLocalToRemoteIssue(data as unknown as Issue),
+					),
 				});
 				if (error) {
 					throw new Error(`Failed to create issue: ${error}`);
@@ -97,9 +97,15 @@ export class GitHubSync extends SyncBase<typeof db> {
 	}): Promise<void> {
 		switch (table) {
 			case 'issues': {
+				const remoteData = this.mapLocalToRemoteIssue(data as unknown as Issue);
+				if (!remoteData) {
+					//nothing to update
+					return;
+				}
 				const project = await this.db.projects.get(
 					(item as unknown as Issue).project_id,
 				);
+
 				const { error } = await safeFetch<
 					paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
 				>(
@@ -107,7 +113,7 @@ export class GitHubSync extends SyncBase<typeof db> {
 					{
 						method: 'PATCH',
 						headers: BASIC_HEADERS,
-						body: JSON.stringify(data),
+						body: JSON.stringify(remoteData),
 					},
 				);
 				if (error) {
@@ -142,14 +148,35 @@ export class GitHubSync extends SyncBase<typeof db> {
 		}
 		const { data, error } = await paginatedFetch<
 			paths['/repos/{owner}/{repo}/issues']['get']['responses']['200']['content']['application/json']
-		>(`https://api.github.com/repos/${fullname}/issues`, {
-			headers: since
-				? { ...BASIC_HEADERS, since: since.toISOString() }
-				: BASIC_HEADERS,
-		});
+		>(
+			`https://api.github.com/repos/${fullname}/issues${since ? `?since=${since.toISOString()}` : ''}`,
+			{
+				headers: BASIC_HEADERS,
+			},
+		);
 		if (error) {
 			throw new Error(`Failed to fetch issues: ${error}`);
 		}
 		return data;
+	}
+
+	private mapLocalToRemoteIssue(
+		issue: Issue,
+	): Partial<
+		paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
+	> {
+		const remoteDelta: Partial<
+			paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
+		> = {};
+		if (issue.title) {
+			remoteDelta.title = issue.title;
+		}
+		if (issue.description) {
+			remoteDelta.body = issue.description;
+		}
+		if (issue.status) {
+			remoteDelta.state = issue.status === 2 ? 'closed' : 'open';
+		}
+		return remoteDelta;
 	}
 }
