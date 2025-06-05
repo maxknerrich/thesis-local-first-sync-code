@@ -2,12 +2,23 @@
 	import { PUBLIC_GITHUB_TOKEN } from "$env/static/public";
 	import { db } from "$lib/db";
 	import { GH_API } from "$lib/github";
-	import { mapper } from "$lib/mapper";
-	import type { Issue } from "$lib/schema";
 	import { GitHubSync } from "$lib/sync";
-	import { createManager } from "tinytick";
 
-	const sync = new GitHubSync({ db });
+	const BASIC_HEADERS = {
+		Accept: "application/vnd.github.text+json",
+		Authorization: `Bearer ${PUBLIC_GITHUB_TOKEN}`,
+		"X-GitHub-Api-Version": "2022-11-28",
+	};
+
+	const sync = new GitHubSync({
+		db,
+		syncConfig: {
+			issues: {
+				mode: "auto",
+				path: "rw",
+			},
+		},
+	});
 
 	async function getRepos() {
 		// Get the list of repositories
@@ -23,57 +34,38 @@
 		await db.projects.add(
 			{
 				name: "BachelorTestProject",
-				created_at: new Date(),
-				updated_at: new Date(),
 				full_name: "maxknerrich/BachelorTestProject",
-				remote_created_at: new Date("2025-04-07T14:36:21Z"),
-				remote_updated_at: new Date("2025-04-07T14:36:21Z"),
-				remote_id: 962027710,
+				description: "This is a test project for the bachelor thesis",
 			},
 			1,
 		);
 	}
 
 	async function Sync() {
-		console.log("sync started");
-		const log = await db._writeLog
-			.where("[object_id+table]")
-			.equals([1, "issues"])
-			.toArray();
-		console.log(log);
-		const create = log.filter((l) => l.method === "create");
-		create.forEach(async (issue) => {
-			if (issue.new_data === null) return;
-			const data = issue.new_data as Issue;
-			const moin = await mapper.api.issues?.create(data);
-			await db._writeLog.delete(issue.number);
-			console.log(moin);
-		});
-		//clear log
+		sync.syncTable("issues");
 	}
+
+	fetch("https://api.github.com/repos/maxknerrich/BachelorTestProject/issues", {
+		method: "GET",
+		headers: { ...BASIC_HEADERS },
+	})
+		.then((res) => res.json())
+		.then((data) => {
+			console.log(data);
+		})
+		.catch((err) => {
+			console.error("Error fetching issues:", err);
+		});
 
 	async function addIssue() {
 		// Add the new friend!
-		const id = await db.issues.add(
-			{
-				id: 14,
-				title: "New Issue",
-				description: "This is a new issue",
-				created_at: new Date(),
-				updated_at: new Date(),
-				status: 1,
-				priority: 1,
-				user: {
-					id: 1,
-					name: "John Doe",
-					avatar_url: "https://example.com/avatar.jpg",
-					login: "johndoe",
-				},
-				project_id: 1,
-				github_number: 123,
-			},
-			14,
-		);
+		const id = await db.issues.add({
+			title: "New Issue",
+			description: `This is a new issue ${Math.random()}`,
+			status: 1,
+			priority: 1,
+			project_id: 1,
+		});
 	}
 </script>
 
