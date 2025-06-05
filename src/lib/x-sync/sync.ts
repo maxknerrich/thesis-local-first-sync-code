@@ -372,6 +372,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		}
 		if (remoteData.data.length === 0 && writeLog.length === 0) {
 			console.log(`No data to sync for table ${table}`);
+
 			this.markSynced(table);
 			return;
 		}
@@ -387,9 +388,29 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			remoteData: remoteData.data,
 			localItems,
 		});
+		if (this.syncConfig?.[table]?.path === 'r') {
+			await this.handleReadOnly({ localTable, categories });
+			this.markSynced(table);
+			await this.db._writeLog.bulkDelete(writeLog.map((entry) => entry.number));
+			return;
+		}
 		await this.applyChanges(categories, table);
 		// Clear the write log for the table
 		await this.db._writeLog.bulkDelete(writeLog.map((entry) => entry.number));
 		this.markSynced(table);
+	}
+	private async handleReadOnly({
+		localTable,
+		categories,
+	}: {
+		localTable: Dexie.Table<unknown, string | number>;
+		categories: CategoriesObject;
+	}) {
+		const { newRemote, updatedRemote } = categories;
+		await this.db.transaction('rw', localTable, async (trans) => {
+			trans._isSyncTransaction = true;
+			localTable.bulkAdd(newRemote);
+			localTable.bulkUpdate(updatedRemote);
+		});
 	}
 }

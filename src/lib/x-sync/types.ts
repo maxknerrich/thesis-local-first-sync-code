@@ -50,7 +50,7 @@ export interface syncConfig {
 	[key: string]: {
 		mode: 'manual' | 'auto';
 		syncInterval?: number; // in seconds
-		path?: 'r' | 'w' | 'rw'; // read, write, or both
+		path?: 'r' | 'rw'; // read, write, or both
 	};
 }
 
