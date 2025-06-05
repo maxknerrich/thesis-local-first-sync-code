@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { PUBLIC_GITHUB_TOKEN } from "$env/static/public";
 	import { db } from "$lib/db";
-	import { GH_API } from "$lib/github";
 	import type { Issue, Project } from "$lib/schema";
 	import { GitHubSync } from "$lib/x-sync";
 
@@ -76,36 +75,6 @@
 		},
 	});
 
-	async function getRepos() {
-		// Get the list of repositories
-		const repos = await GH_API.query.get_all_repos();
-	}
-	fetch(
-		"https://api.github.com/repos/maxknerrich/BachelorTestProject/issues?since=2023-05-01T00:00:00Z&state=all",
-		{
-			headers: {
-				Accept: "application/vnd.github.text+json",
-				Authorization: `Bearer ${PUBLIC_GITHUB_TOKEN}`,
-				"X-GitHub-Api-Version": "2022-11-28",
-			},
-		},
-	)
-		.then((response) => {
-			if (!response.ok) {
-				throw new Error("Network response was not ok");
-			}
-			return response.json();
-		})
-		.then((data) => {
-			console.log(data);
-		})
-		.catch((error) => {
-			console.error(
-				"There has been a problem with your fetch operation:",
-				error,
-			);
-		});
-
 	async function deleteDB() {
 		await db.delete();
 		localStorage.clear();
@@ -159,7 +128,6 @@
 <button onclick={addIssue}>Add issue</button>
 <button onclick={createProject}>createProject </button>
 <button onclick={updateIssue}>Update issues</button>
-<button onclick={getRepos}>Get Repos</button>
 <button onclick={deleteDB}>Delete DB</button>
 <button onclick={SyncIssue}>Sync Issues</button>
 <button onclick={SyncProject}>Sync Projects</button>
