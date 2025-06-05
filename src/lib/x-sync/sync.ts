@@ -91,7 +91,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	}: {
 		table: string;
 		id: number;
-		data: DBObject;
+		data: Omit<DBObject, 'remote_id' | 'id'>;
 	}): Promise<CreateReturn>;
 	abstract pushUpdate({
 		table,
