@@ -1,3 +1,4 @@
+import { AsyncQueuer } from '@tanstack/pacer';
 import type Dexie from 'dexie';
 import { createManager, type Manager } from 'tinytick';
 import type {
@@ -23,6 +24,21 @@ type CategoriesObject = {
 		remote_id: string;
 		changes: Partial<DBObject>;
 	}[];
+};
+
+type CreateItem = {
+	table: string;
+	id: number;
+	data: Omit<DBObject, 'remote_id' | 'id'>;
+};
+type UpdateItem = {
+	table: string;
+	remote_id: string;
+	data: DBObject;
+};
+type DeleteItem = {
+	table: string;
+	remote_id: number | string;
 };
 
 type CreateReturn = { key: number; changes: Partial<PullItem> };
@@ -84,31 +100,9 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		table: string;
 		since?: Date;
 	}): Promise<Result<PullResult>>;
-	abstract pushCreate({
-		table,
-		id,
-		data,
-	}: {
-		table: string;
-		id: number;
-		data: Omit<DBObject, 'remote_id' | 'id'>;
-	}): Promise<CreateReturn>;
-	abstract pushUpdate({
-		table,
-		remote_id,
-		data,
-	}: {
-		table: string;
-		remote_id: string;
-		data: DBObject;
-	}): Promise<void>;
-	abstract pushDelete({
-		table,
-		remote_id,
-	}: {
-		table: string;
-		remote_id: number | string;
-	}): Promise<void>;
+	abstract pushCreate({ table, id, data }: CreateItem): Promise<CreateReturn>;
+	abstract pushUpdate({ table, remote_id, data }: UpdateItem): Promise<void>;
+	abstract pushDelete({ table, remote_id }: DeleteItem): Promise<void>;
 
 	protected async sync(signal: AbortSignal): Promise<void> {
 		if (signal.aborted) {
@@ -264,6 +258,29 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 
 	private async applyChanges(categories: CategoriesObject, table: keyof TBD) {
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
+		let localUpdatesFromRemote: CreateReturn[] = [];
+		const pushQueue = new AsyncQueuer(
+			async (
+				item:
+					| { type: 'create'; data: CreateItem }
+					| { type: 'update'; data: UpdateItem }
+					| { type: 'delete'; data: DeleteItem },
+			) => {
+				const { type, data } = item;
+				if (type === 'create') {
+					return await this.pushCreate(data).then((item) =>
+						localUpdatesFromRemote.push(item),
+					);
+				} else if (type === 'update') {
+					return await this.pushUpdate(data);
+				} else if (type === 'delete') {
+					return await this.pushDelete(data);
+				}
+			},
+			{
+				concurrency: 5,
+			},
+		);
 		const {
 			newLocal,
 			newRemote,
@@ -273,44 +290,42 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			conflicts,
 		} = categories;
 
-		let requests = [];
-		let localUpdatesFromRemote: CreateReturn[] = [];
-
 		for (const item of newLocal) {
-			requests.push(
-				this.pushCreate({ table: 'issues', id: item.id, data: item.data }).then(
-					(item) => localUpdatesFromRemote.push(item),
-				),
-			);
+			pushQueue.addItem({
+				type: 'create',
+				data: { table: 'issues', id: item.id, data: item.data },
+			});
 		}
 		for (const item of updatedLocal) {
-			requests.push(
-				this.pushUpdate({
+			pushQueue.addItem({
+				type: 'update',
+				data: {
 					table: 'issues',
 					remote_id: item.remote_id,
 					data: item.changes as DBObject,
-				}),
-			);
+				},
+			});
 		}
 		for (const item of deletedLocal) {
-			requests.push(
-				this.pushDelete({
+			pushQueue.addItem({
+				type: 'delete',
+				data: {
 					table: 'issues',
 					remote_id: item,
-				}),
-			);
+				},
+			});
 		}
 		for (const item of conflicts) {
-			requests.push(
-				this.pushUpdate({
+			pushQueue.addItem({
+				type: 'update',
+				data: {
 					table: 'issues',
 					remote_id: item.remote_id,
 					data: item.changes as DBObject,
-				}),
-			);
+				},
+			});
 		}
-		await Promise.all(requests);
-
+		while (pushQueue.getIsRunning() && !pushQueue.getIsEmpty()) {}
 		await this.db.transaction('rw', localTable, async (trans) => {
 			trans._isSyncTransaction = true;
 			localTable.bulkAdd(newRemote);
