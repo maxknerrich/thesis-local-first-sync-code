@@ -48,12 +48,21 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	protected syncedTables: string[];
 	private readonly manager: Manager;
 	private readonly default_interval = 5 * 60 * 1000;
-	private lastSync: Map<string, TableMetadata>;
+	private lastSync: { [key: string]: TableMetadata };
 	private syncConfig?: syncConfig;
 
 	constructor({ db, syncConfig }: { db: TBD; syncConfig?: syncConfig }) {
 		this.db = db;
 		this.manager = createManager();
+		const savedLastSync = localStorage.getItem('lastSync');
+		const parsedLastSync = savedLastSync
+			? (JSON.parse(savedLastSync, (key, value) => {
+					if (key === 'lastSync' && typeof value === 'string') {
+						return new Date(value);
+					}
+					return value;
+				}) as typeof this.lastSync)
+			: null;
 		if (syncConfig) {
 			Object.keys(syncConfig).forEach((table) => {
 				if (!this.db._syncedStores.includes(table)) {
@@ -77,19 +86,23 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			async (table) => this.syncTable(table as keyof typeof this.db),
 			'syncHandler',
 		);
-		this.lastSync = new Map();
-		for (const table of this.syncedTables) {
-			this.lastSync.set(table, { lastSync: 'never', status: 'idle' });
+
+		// parse the date from each table
+		this.lastSync = parsedLastSync ?? {};
+		if (Object.keys(this.lastSync).length === 0) {
+			for (const table of this.syncedTables) {
+				this.lastSync[table] = { lastSync: 'never', status: 'idle' };
+			}
 		}
 		console.log(
 			`SyncBase initialized with tables: ${this.syncedTables.join(', ')}`,
 		);
 		this.manager.start();
-		this.manager.scheduleTaskRun('sync');
+		// this.manager.scheduleTaskRun('sync');
 	}
 
 	protected getSince(table: string): null | Date {
-		const lastSync = this.lastSync.get(table)?.lastSync;
+		const lastSync = this.lastSync[table]?.lastSync;
 		if (lastSync === 'never' || typeof lastSync === 'string' || !lastSync) {
 			return null;
 		}
@@ -114,7 +127,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				console.log(`Skipping sync for table ${table} (manual mode)`);
 				continue;
 			}
-			const lastSync = this.lastSync.get(table)?.lastSync;
+			const lastSync = this.lastSync[table]?.lastSync;
 
 			if (!lastSync) continue;
 
@@ -151,10 +164,11 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 	}
 
 	private markSynced(table: string) {
-		this.lastSync.set(table, {
+		localStorage.setItem('lastSync', JSON.stringify(this.lastSync));
+		this.lastSync[table] = {
 			lastSync: new Date(),
 			status: 'synced',
-		});
+		};
 		console.log(`Table ${table} synced successfully.`);
 	}
 	private static calulateOldItem(item: DBObject, events: WriteLogEntry[]) {
@@ -352,7 +366,6 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			this.pullData(fetchArgs),
 			this.db._writeLog.where('table').equals(table).sortBy('number'),
 		]);
-
 		if (remoteData.error) {
 			console.error(`Error pulling data for table ${table}:`, remoteData.error);
 			return;
@@ -375,6 +388,8 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			localItems,
 		});
 		await this.applyChanges(categories, table);
+		// Clear the write log for the table
+		await this.db._writeLog.bulkDelete(writeLog.map((entry) => entry.number));
 		this.markSynced(table);
 	}
 }
