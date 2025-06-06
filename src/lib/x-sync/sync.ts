@@ -69,16 +69,6 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		} else {
 			this.syncedTables = db._syncedStores as (keyof TDB)[];
 		}
-		this.manager.setTask(
-			'sync',
-			async (_, signal) => this.sync(signal),
-			'syncHandler',
-		);
-		this.manager.setTask(
-			'syncTable',
-			async (table) => this.syncTable(table as keyof TDB),
-			'syncHandler',
-		);
 
 		// Initialize with default values
 		this.lastSync = {} as LastSync<TDB>;
@@ -127,9 +117,27 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	abstract pushDelete({ table, item }: DeleteItem): Promise<void>;
 
 	protected async sync(signal: AbortSignal): Promise<void> {
+		console.log('Starting sync process...');
 		if (signal.aborted) {
 			return;
 		}
+
+		// Check basic connectivity
+		if (window.navigator.onLine === false) {
+			this.offline();
+			return;
+		}
+
+		// Check connection quality if supported
+		if (
+			'connection' in window.navigator &&
+			//@ts-ignore
+			window.navigator.connection?.effectiveType !== '4g'
+		) {
+			this.offline();
+			return;
+		}
+
 		let tasks: string[] = [];
 		for (const table of this.syncedTables) {
 			const syncConfig = this.syncConfig?.[table as string];
@@ -165,6 +173,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 				tasks.map((task) => this.manager.untilTaskRunDone(task)),
 			);
 		}
+		console.log('edb sync process...');
 		this.manager.scheduleTaskRun('sync', undefined, 10 * 1000); // run again in 10 seconds
 	}
 	private getWritesPerObject(
@@ -292,8 +301,40 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	}
 
 	start() {
+		this.manager.setTask(
+			'sync',
+			async (_, signal) => this.sync(signal),
+			'syncHandler',
+		);
+		this.manager.setTask(
+			'syncTable',
+			async (table) => this.syncTable(table as keyof TDB),
+			'syncHandler',
+		);
 		this.manager.start();
 		this.manager.scheduleTaskRun('sync');
+	}
+
+	private offline() {
+		this.manager.setTask('check_offline', async () => {
+			if (window.navigator.onLine) {
+				if (!('connection' in window.navigator)) {
+					this.start();
+					return;
+				}
+				if (
+					//@ts-ignore
+					window.navigator.connection?.effectiveType === '4g'
+				) {
+					this.start();
+					return;
+				}
+			}
+			this.manager.scheduleTaskRun('check_offline', undefined, 500);
+		});
+		this.manager.delTask('sync');
+		this.manager.delTask('syncTable');
+		this.manager.scheduleTaskRun('check_offline', undefined, 500);
 	}
 
 	stop() {
