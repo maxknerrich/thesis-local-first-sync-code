@@ -11,7 +11,14 @@ export interface Issue {
 export interface Project {
 	id: number;
 	name: string;
+	description: string;
+	has_repository: boolean;
+	repository_id?: number;
+}
+export interface Repository {
+	id: number;
+	name: string;
 	full_name: string;
 	description: string;
-	active: boolean;
+	project_id?: number;
 }

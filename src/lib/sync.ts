@@ -1,12 +1,12 @@
 import { PUBLIC_GITHUB_TOKEN } from '$env/static/public';
 import { db } from '$lib/db';
-import type { Issue, Project } from '$lib/schema';
+import type { Issue, Repository } from '$lib/schema';
 import { GitHubSync } from '$lib/x-sync';
 import type Dexie from 'dexie';
 
 type Schema = {
 	issues: Required<Issue> & { remote_id: string };
-	repos: Required<Project> & { remote_id: string };
+	repos: Required<Repository> & { remote_id: string };
 };
 
 export const sync = new GitHubSync<Schema, typeof db>({
@@ -18,7 +18,7 @@ export const sync = new GitHubSync<Schema, typeof db>({
 			syncInterval: 100,
 			path: 'rw',
 		},
-		projects: {
+		repositories: {
 			mode: 'manual',
 			path: 'r',
 		},
@@ -28,16 +28,25 @@ export const sync = new GitHubSync<Schema, typeof db>({
 			tableName: 'issues',
 			repos_to_fetch: () =>
 				db.projects
-					.filter((project) => project.active === true)
+					.filter((e) => e.has_repository)
 					.toArray()
-					.then((result) =>
-						result.map((project) => ({
-							full_name: project.full_name,
-							id: project.id,
+					.then((project) =>
+						db.repositories
+							.where('project_id')
+							.anyOf(project.map((p) => p.id))
+							.toArray(),
+					)
+					.then((repos) =>
+						repos.map((repo) => ({
+							full_name: repo.full_name,
+							id: repo.project_id as number,
 						})),
 					),
 			getRepo: (issue) =>
-				db.projects.get(issue.project_id).then((repo) => repo?.full_name ?? ''),
+				db.projects
+					.get(issue.project_id)
+					.then((repo) => db.repositories.get(repo?.repository_id ?? 0))
+					.then((repo) => repo?.full_name ?? ''),
 			//@ts-ignore
 			toLocal: (remote, args?: { full_name: string; id: number }) => ({
 				title: remote.title,
@@ -70,15 +79,14 @@ export const sync = new GitHubSync<Schema, typeof db>({
 		},
 		// @ts-ignore
 		repos: {
-			tableName: 'projects' as keyof Dexie,
+			tableName: 'repositories' as keyof Dexie,
 			toLocal: (remote) =>
 				({
 					name: remote.name,
 					description: remote.description ? remote.description : '',
 					remote_id: remote.id.toString(),
 					full_name: remote.full_name,
-					id: remote.id, // Assuming Project.id is the numeric GitHub ID
-				}) as Required<Project> & { remote_id: string },
+				}) as Required<Repository> & { remote_id: string },
 		},
 	},
 });
