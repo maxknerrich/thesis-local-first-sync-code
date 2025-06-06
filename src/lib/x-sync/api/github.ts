@@ -33,8 +33,9 @@ export type SchemaConfig<
 > = {
 	[K in keyof TSchema]: {
 		tableName: keyof TDB | K;
-		toLocal: (
+		toLocal: <S>(
 			remote: K extends 'issues' ? RemoteIssue : RemoteRepo,
+			callbacks?: S,
 		) => TSchema[K];
 		toRemote: (
 			local: TSchema[K],
@@ -77,15 +78,15 @@ export class GitHubSync<
 	}): Promise<Result<PullResult>> {
 		switch (table) {
 			case this.schema.issues.tableName: {
-				const projects = await this.schema.issues.repos_to_fetch();
+				const repos = await this.schema.issues.repos_to_fetch();
 				const issues = await Promise.all(
-					projects.map((project) =>
+					repos.map((repo) =>
 						this.get_issues({
-							fullname: project.full_name,
+							fullname: repo.full_name,
 							since: since,
 						}).then((res) => {
 							return res.map((issue: RemoteIssue) =>
-								this.schema.issues.toLocal(issue),
+								this.schema.issues.toLocal<typeof repo>(issue, repo),
 							);
 						}),
 					),
@@ -108,7 +109,7 @@ export class GitHubSync<
 					);
 				});
 				if (!data) {
-					throw new Error('Failed to fetch projects from GitHub');
+					throw new Error('Failed to fetch repos from GitHub');
 				}
 				return { data: data as PullItem[], error: null };
 			}
@@ -128,12 +129,12 @@ export class GitHubSync<
 	}): Promise<{ key: number; changes: Partial<PullItem> }> {
 		switch (table) {
 			case this.schema.issues.tableName: {
-				const project = await this.schema.issues.getRepo(
+				const repo = await this.schema.issues.getRepo(
 					item as TSchema['issues'],
 				);
 				const { data: pullData, error } = await safeFetch<
 					paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
-				>(`https://api.github.com/repos/${project}/issues`, {
+				>(`https://api.github.com/repos/${repo}/issues`, {
 					method: 'POST',
 					headers: BASIC_HEADERS,
 					body: JSON.stringify(
@@ -174,14 +175,14 @@ export class GitHubSync<
 					//nothing to update
 					return;
 				}
-				const project = await this.schema.issues.getRepo(
+				const repo = await this.schema.issues.getRepo(
 					item as TSchema['issues'],
 				);
 				const number = item.github_number;
 
 				const { error } = await safeFetch<
 					paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
-				>(`https://api.github.com/repos/${project}/issues/${number}`, {
+				>(`https://api.github.com/repos/${repo}/issues/${number}`, {
 					method: 'PATCH',
 					headers: BASIC_HEADERS,
 					body: JSON.stringify(remoteData),
