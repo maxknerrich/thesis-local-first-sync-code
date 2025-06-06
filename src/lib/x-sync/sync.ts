@@ -5,6 +5,7 @@ import { createManager, type Manager } from 'tinytick';
 import type {
 	ConflictItem,
 	DBObject,
+	LastSync,
 	PullItem,
 	PullResult,
 	Result,
@@ -41,8 +42,6 @@ type DeleteItem = {
 	table: string;
 	item: DBObject;
 };
-
-type LastSync<TDB> = Record<keyof TDB, TableMetadata>;
 
 type CreateReturn = { key: number; changes: Partial<PullItem> };
 

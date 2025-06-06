@@ -1,4 +1,3 @@
-import { PUBLIC_GITHUB_TOKEN } from '$env/static/public';
 import { paginatedFetch, safeFetch } from '$lib/utils';
 import { SyncBase } from '$lib/x-sync/sync';
 import type Dexie from 'dexie';
@@ -10,12 +9,6 @@ import type {
 	syncConfig,
 } from '../types';
 import type { paths } from './githubapi';
-
-const BASIC_HEADERS = {
-	Accept: 'application/vnd.github.text+json',
-	Authorization: `Bearer ${PUBLIC_GITHUB_TOKEN}`,
-	'X-GitHub-Api-Version': '2022-11-28',
-};
 
 type RemoteIssue =
 	paths['/repos/{owner}/{repo}/issues']['get']['responses']['200']['content']['application/json'][number];
@@ -52,7 +45,7 @@ export class GitHubSync<
 	TSchema extends GitHubSchemaDefinition,
 	TDB extends Dexie,
 > extends SyncBase<TDB> {
-	private token: string;
+	private headers: Record<string, string>;
 	private schema: SchemaConfig<TSchema, Dexie>;
 	constructor({
 		db,
@@ -67,7 +60,11 @@ export class GitHubSync<
 	}) {
 		super({ db, ...(syncConfig && { syncConfig }) });
 		this.schema = schema;
-		this.token = token;
+		this.headers = {
+			Accept: 'application/vnd.github.text+json',
+			Authorization: `Bearer ${token}`,
+			'X-GitHub-Api-Version': '2022-11-28',
+		};
 	}
 	async pullData({
 		table,
@@ -99,7 +96,7 @@ export class GitHubSync<
 				>(
 					`https://api.github.com/user/repos${since ? `?since=${since.toISOString()}` : ''}`,
 					{
-						headers: BASIC_HEADERS,
+						headers: this.headers,
 					},
 				).then((res) => {
 					return (
@@ -136,7 +133,7 @@ export class GitHubSync<
 					paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
 				>(`https://api.github.com/repos/${repo}/issues`, {
 					method: 'POST',
-					headers: BASIC_HEADERS,
+					headers: this.headers,
 					body: JSON.stringify(
 						this.schema.issues.toRemote(data as TSchema['issues']),
 					),
@@ -184,7 +181,7 @@ export class GitHubSync<
 					paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
 				>(`https://api.github.com/repos/${repo}/issues/${number}`, {
 					method: 'PATCH',
-					headers: BASIC_HEADERS,
+					headers: this.headers,
 					body: JSON.stringify(remoteData),
 				});
 				if (error) {
@@ -223,7 +220,7 @@ export class GitHubSync<
 		const { data, error } = await paginatedFetch<
 			paths['/repos/{owner}/{repo}/issues']['get']['responses']['200']['content']['application/json']
 		>(`https://api.github.com/repos/${fullname}/issues${queryParams}`, {
-			headers: BASIC_HEADERS,
+			headers: this.headers,
 		});
 		if (error) {
 			throw new Error(`Failed to fetch issues: ${error}`);

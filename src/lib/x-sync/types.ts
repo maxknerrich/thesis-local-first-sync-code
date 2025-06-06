@@ -53,6 +53,7 @@ export interface syncConfig {
 		path?: 'r' | 'rw'; // read, write, or both
 	};
 }
+export type LastSync<TDB> = Record<keyof TDB, TableMetadata>;
 
 export interface ConflictItem {
 	localItem: DBObject;
