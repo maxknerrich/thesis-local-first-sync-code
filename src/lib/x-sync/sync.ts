@@ -1,5 +1,6 @@
 import { AsyncQueuer } from '@tanstack/pacer';
 import type Dexie from 'dexie';
+import type { Table } from 'dexie';
 import { createManager, type Manager } from 'tinytick';
 import type {
 	ConflictItem,
@@ -41,28 +42,22 @@ type DeleteItem = {
 	item: DBObject;
 };
 
+type LastSync<TDB> = Record<keyof TDB, TableMetadata>;
+
 type CreateReturn = { key: number; changes: Partial<PullItem> };
 
-export abstract class SyncBase<TBD extends Dexie = Dexie> {
-	protected db: TBD;
-	protected syncedTables: string[];
+export abstract class SyncBase<TDB extends Dexie = Dexie> {
+	protected db: TDB;
+	protected syncedTables: (keyof TDB)[];
 	private readonly manager: Manager;
 	private readonly default_interval = 5 * 60 * 1000;
-	private lastSync: { [key: string]: TableMetadata };
+	private lastSync: LastSync<TDB>;
 	private syncConfig?: syncConfig;
 
-	constructor({ db, syncConfig }: { db: TBD; syncConfig?: syncConfig }) {
+	constructor({ db, syncConfig }: { db: TDB; syncConfig?: syncConfig }) {
 		this.db = db;
 		this.manager = createManager();
-		const savedLastSync = localStorage.getItem('lastSync');
-		const parsedLastSync = savedLastSync
-			? (JSON.parse(savedLastSync, (key, value) => {
-					if (key === 'lastSync' && typeof value === 'string') {
-						return new Date(value);
-					}
-					return value;
-				}) as typeof this.lastSync)
-			: null;
+
 		if (syncConfig) {
 			Object.keys(syncConfig).forEach((table) => {
 				if (!this.db._syncedStores.includes(table)) {
@@ -72,9 +67,9 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				}
 			});
 			this.syncConfig = syncConfig;
-			this.syncedTables = Object.keys(syncConfig);
+			this.syncedTables = Object.keys(syncConfig) as (keyof TDB)[];
 		} else {
-			this.syncedTables = db._syncedStores;
+			this.syncedTables = db._syncedStores as (keyof TDB)[];
 		}
 		this.manager.setTask(
 			'sync',
@@ -83,25 +78,42 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		);
 		this.manager.setTask(
 			'syncTable',
-			async (table) => this.syncTable(table as keyof typeof this.db),
+			async (table) => this.syncTable(table as keyof TDB),
 			'syncHandler',
 		);
 
-		// parse the date from each table
-		this.lastSync = parsedLastSync ?? {};
-		if (Object.keys(this.lastSync).length === 0) {
-			for (const table of this.syncedTables) {
-				this.lastSync[table] = { lastSync: 'never', status: 'idle' };
-			}
+		// Initialize with default values
+		this.lastSync = {} as LastSync<TDB>;
+		for (const table of this.syncedTables) {
+			this.lastSync[table] = {
+				lastSync: 'never',
+				status: 'idle',
+			} as TableMetadata;
 		}
+
 		console.log(
 			`SyncBase initialized with tables: ${this.syncedTables.join(', ')}`,
 		);
 		this.manager.start();
-		// this.manager.scheduleTaskRun('sync');
+
+		// Initialize async data
+		this.initializeAsync();
 	}
 
-	protected getSince(table: string): null | Date {
+	private async initializeAsync(): Promise<void> {
+		try {
+			const savedLastSync = await this.db._syncState.get('lastSync');
+
+			if (savedLastSync && Object.keys(savedLastSync.value).length > 0) {
+				this.lastSync = savedLastSync.value as LastSync<TDB>;
+			}
+		} catch (error) {
+			console.error('Failed to load saved sync state:', error);
+			// Keep the default initialization
+		}
+	}
+
+	protected getSince(table: keyof TDB): null | Date {
 		const lastSync = this.lastSync[table]?.lastSync;
 		if (lastSync === 'never' || typeof lastSync === 'string' || !lastSync) {
 			return null;
@@ -122,9 +134,9 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			return;
 		}
 		for (const table of this.syncedTables) {
-			const syncConfig = this.syncConfig?.[table];
+			const syncConfig = this.syncConfig?.[table as string];
 			if (syncConfig?.mode === 'manual') {
-				console.log(`Skipping sync for table ${table} (manual mode)`);
+				console.log(`Skipping sync for table ${table as string} (manual mode)`);
 				continue;
 			}
 			const lastSync = this.lastSync[table]?.lastSync;
@@ -132,7 +144,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 			if (!lastSync) continue;
 
 			if (lastSync === 'never' || typeof lastSync === 'string' || !lastSync) {
-				this.manager.scheduleTaskRun('syncTable', table);
+				this.manager.scheduleTaskRun('syncTable', table as string);
 				continue;
 			}
 
@@ -146,7 +158,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 				continue;
 			}
 
-			this.manager.scheduleTaskRun('syncTable', table);
+			this.manager.scheduleTaskRun('syncTable', table as string);
 		}
 	}
 	private getWritesPerObject(
@@ -163,13 +175,15 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		return writesPerObject;
 	}
 
-	private markSynced(table: string) {
-		localStorage.setItem('lastSync', JSON.stringify(this.lastSync));
+	private async markSynced(table: keyof TDB) {
 		this.lastSync[table] = {
 			lastSync: new Date(),
 			status: 'synced',
 		};
-		console.log(`Table ${table} synced successfully.`);
+		await this.db._syncState.put({ key: 'lastSync', value: this.lastSync });
+		console.log(
+			`Table ${table as string} synced at ${this.lastSync[table].lastSync}`,
+		);
 	}
 	private static calulateOldItem(item: DBObject, events: WriteLogEntry[]) {
 		const old_data = events
@@ -271,7 +285,7 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		return data as DBObject;
 	}
 
-	private async applyChanges(categories: CategoriesObject, table: keyof TBD) {
+	private async applyChanges(categories: CategoriesObject, table: keyof TDB) {
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 		let localUpdatesFromRemote: CreateReturn[] = [];
 		const pushQueue = new AsyncQueuer(
@@ -354,10 +368,11 @@ export abstract class SyncBase<TBD extends Dexie = Dexie> {
 		});
 	}
 
-	async syncTable(table: keyof TBD) {
+	async syncTable(table: keyof TDB) {
 		if (typeof table !== 'string') {
 			throw new Error('Table name must be a string');
 		}
+		this.lastSync[table].status = 'syncing';
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 		const since = this.getSince(table);
 		const fetchArgs = since ? { table, since } : { table };

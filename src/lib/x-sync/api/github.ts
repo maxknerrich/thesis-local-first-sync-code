@@ -95,9 +95,12 @@ export class GitHubSync<
 			case this.schema.repos.tableName: {
 				const data = await paginatedFetch<
 					paths['/users/{username}/repos']['get']['responses']['200']['content']['application/json']
-				>(`https://api.github.com/user/repos`, {
-					headers: BASIC_HEADERS,
-				}).then((res) => {
+				>(
+					`https://api.github.com/user/repos${since ? `?since=${since.toISOString()}` : ''}`,
+					{
+						headers: BASIC_HEADERS,
+					},
+				).then((res) => {
 					return (
 						res.data?.map((repo: RemoteRepo) =>
 							this.schema.repos.toLocal(repo),
@@ -213,7 +216,6 @@ export class GitHubSync<
 		if (since && !(since instanceof Date)) {
 			throw new Error('Since must be a Date object or null');
 		}
-		console.log(since, since?.toISOString());
 		const queryParams = since
 			? `?since=${since.toISOString()}&state=all`
 			: '?state=all';
