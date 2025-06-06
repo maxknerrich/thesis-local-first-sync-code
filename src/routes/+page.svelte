@@ -9,12 +9,15 @@
 		repos: Required<Project>;
 	};
 
+	let projectid = null;
+
 	const sync = new GitHubSync<Schema, typeof db>({
 		db,
 		token: PUBLIC_GITHUB_TOKEN,
 		syncConfig: {
 			issues: {
 				mode: "auto",
+				syncInterval: 100,
 				path: "rw",
 			},
 			projects: {
@@ -35,13 +38,15 @@
 								id: project.id,
 							})),
 						),
-				getRepo: (issue) => issue.project_id,
-				toLocal: (remote) => ({
+				getRepo: (issue) =>
+					db.projects.get(issue.project_id).then((repo) => repo?.full_name),
+				toLocal: (remote, args: { full_name: string; id: number }) => ({
 					title: remote.title,
 					description: remote.body,
 					status: remote.state === "open" ? 0 : 2,
 					github_number: remote.number,
 					remote_id: remote.id,
+					project_id: args.id,
 				}),
 				toRemote: (
 					local,
@@ -73,7 +78,7 @@
 				}),
 			},
 		},
-	});
+	}).start();
 
 	async function deleteDB() {
 		await db.delete();
@@ -88,21 +93,25 @@
 	}
 
 	async function addIssue() {
+		if (!projectid) {
+			return alert("Please create a project first!");
+		}
 		// Add the new friend!
 		const id = await db.issues.add({
 			title: "New Issue",
 			description: `This is a new issue ${Math.random()}`,
 			status: 1,
 			priority: 1,
-			project_id: 1,
+			project_id: projectid,
 		});
 	}
 	async function createProject() {
-		const project = await db.projects
+		projectid = (await db.projects
 			.where("name")
 			.equals("BachelorTestProject")
-			.first();
-		await db.projects.update(project?.id, {
+			.first()
+			.then((project) => project?.id)) as number;
+		await db.projects.update(projectid, {
 			active: true,
 		});
 	}
