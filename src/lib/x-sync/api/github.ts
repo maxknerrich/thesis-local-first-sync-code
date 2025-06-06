@@ -129,6 +129,7 @@ export class GitHubSync<
 				const repo = await this.schema.issues.getRepo(
 					item as TSchema['issues'],
 				);
+				if (!repo) return { key: item.id, changes: {} };
 				const { data: pullData, error } = await safeFetch<
 					paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
 				>(`https://api.github.com/repos/${repo}/issues`, {
@@ -175,6 +176,7 @@ export class GitHubSync<
 				const repo = await this.schema.issues.getRepo(
 					item as TSchema['issues'],
 				);
+				if (!repo) return;
 				const number = item.github_number;
 
 				const { error } = await safeFetch<
