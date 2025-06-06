@@ -1,6 +1,5 @@
 import { AsyncQueuer } from '@tanstack/pacer';
 import type Dexie from 'dexie';
-import type { Table } from 'dexie';
 import { createManager, type Manager } from 'tinytick';
 import type {
 	ConflictItem,
