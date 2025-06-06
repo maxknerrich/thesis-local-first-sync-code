@@ -50,7 +50,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	protected db: TDB;
 	protected syncedTables: (keyof TDB)[];
 	private readonly manager: Manager;
-	private readonly default_interval = 5 * 60 * 1000;
+	private readonly default_interval = 5 * 60; // 5 minutes in seconds
 	private lastSync: LastSync<TDB>;
 	private syncConfig?: syncConfig;
 
@@ -94,7 +94,6 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		console.log(
 			`SyncBase initialized with tables: ${this.syncedTables.join(', ')}`,
 		);
-		this.manager.start();
 
 		// Initialize async data
 		this.initializeAsync();
@@ -133,10 +132,10 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		if (signal.aborted) {
 			return;
 		}
+		let tasks: string[] = [];
 		for (const table of this.syncedTables) {
 			const syncConfig = this.syncConfig?.[table as string];
 			if (syncConfig?.mode === 'manual') {
-				console.log(`Skipping sync for table ${table as string} (manual mode)`);
 				continue;
 			}
 			const lastSync = this.lastSync[table]?.lastSync;
@@ -144,22 +143,31 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 			if (!lastSync) continue;
 
 			if (lastSync === 'never' || typeof lastSync === 'string' || !lastSync) {
-				this.manager.scheduleTaskRun('syncTable', table as string);
+				tasks.push(
+					this.manager.scheduleTaskRun('syncTable', table as string) ?? '',
+				);
 				continue;
 			}
 
-			const differenceInMinutes =
-				Math.abs(Date.now() - lastSync.getTime()) / 60000;
-
+			const differenceInSeconds =
+				Math.abs(Date.now() - lastSync.getTime()) / 1000;
 			if (
-				differenceInMinutes <=
+				differenceInSeconds <=
 				(syncConfig?.syncInterval ?? this.default_interval)
 			) {
 				continue;
 			}
 
-			this.manager.scheduleTaskRun('syncTable', table as string);
+			tasks.push(
+				this.manager.scheduleTaskRun('syncTable', table as string) ?? '',
+			);
 		}
+		if (tasks.length > 0) {
+			await Promise.all(
+				tasks.map((task) => this.manager.untilTaskRunDone(task)),
+			);
+		}
+		this.manager.scheduleTaskRun('sync', undefined, 10 * 1000); // run again in 10 seconds
 	}
 	private getWritesPerObject(
 		writeLog: WriteLogEntry[],
@@ -185,7 +193,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 			`Table ${table as string} synced at ${this.lastSync[table].lastSync}`,
 		);
 	}
-	private static calulateOldItem(item: DBObject, events: WriteLogEntry[]) {
+	private static calculateOldItem(item: DBObject, events: WriteLogEntry[]) {
 		const old_data = events
 			.toReversed()
 			.reduce((acc, event) => Object.assign(acc, event.old_data), {});
@@ -197,7 +205,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		remoteItem,
 		writeLog,
 	}: ConflictItem): Partial<DBObject> {
-		const oldItem = SyncBase.calulateOldItem(localItem, writeLog);
+		const oldItem = SyncBase.calculateOldItem(localItem, writeLog);
 		const remoteChanges = diffObject<PullItem>(oldItem, remoteItem);
 		const GithubEvent = {
 			new_data: remoteChanges,
@@ -283,6 +291,15 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 			{},
 		);
 		return data as DBObject;
+	}
+
+	start() {
+		this.manager.start();
+		this.manager.scheduleTaskRun('sync');
+	}
+
+	stop() {
+		this.manager.stop();
 	}
 
 	private async applyChanges(categories: CategoriesObject, table: keyof TDB) {
