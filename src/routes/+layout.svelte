@@ -5,12 +5,10 @@
 </script>
 
 <header>
-	<nav>
-		<h1>LocalIssues</h1>
-	</nav>
+	<h1>LocalIssues</h1>
+	<Fps height={50}></Fps>
 </header>
 <main>
-	<Fps height={50}></Fps>
 	{@render children()}
 </main>
 
@@ -19,6 +17,9 @@
 		margin: 0;
 		padding: 0;
 		height: 100vh;
+	}
+	:global(h1, h2) {
+		margin: 0;
 	}
 	:global(body) {
 		display: grid;
@@ -30,5 +31,11 @@
 	header {
 		padding: 16px;
 		overflow: hidden;
+		margin: 0;
+	}
+	header {
+		height: 50px;
+		display: flex;
+		align-items: center;
 	}
 </style>

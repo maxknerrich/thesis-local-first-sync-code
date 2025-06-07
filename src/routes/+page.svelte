@@ -1,34 +1,111 @@
 <script lang="ts">
 	import CreateProject from "$lib/components/CreateProject.svelte";
 	import { db } from "$lib/db";
+	import {
+		type Project,
+		priority_to_string,
+		status_to_string,
+	} from "$lib/schema";
 	import { stateQuery } from "$lib/stateQuery.svelte";
 	import { sync } from "$lib/sync";
 
 	const projectsQuery = stateQuery(async () => await db.projects.toArray());
 	const projects = $derived(projectsQuery.current ?? []);
-	const activeProject = $state(projects[0] ?? null);
+
+	let hasSyncStarted = $state(false);
+
+	$effect(() => {
+		if (!activeProject && projects.length > 0) {
+			activeProject = projects[0];
+		}
+		if (activeProject) {
+			document.title = `Issues - ${activeProject.name}`;
+		} else {
+			document.title = "Issues";
+		}
+	});
+
+	$effect(() => {
+		// Only run sync once when projects are loaded and at least one has a repository
+		if (!hasSyncStarted && projects.length > 0) {
+			const hasProjectWithRepo = projects.some(
+				(project) => project.has_repository,
+			);
+			if (hasProjectWithRepo) {
+				sync.start();
+				hasSyncStarted = true;
+			}
+		}
+	});
+
+	let issuesQuery = stateQuery(
+		async () => {
+			if (!activeProject) return [];
+			return await db.issues
+				.where("project_id")
+				.equals(activeProject.id)
+				.toArray();
+		},
+		() => [activeProject],
+	);
+
+	let issues = $derived(issuesQuery.current ?? []);
+
+	let activeProject: Project | undefined = $state();
 	let createProjectDialog = $state<HTMLDialogElement>();
 </script>
 
 <CreateProject bind:dialog={createProjectDialog} />
 <grid>
 	<projects>
-		<button onclick={() => createProjectDialog?.showModal()}
-			>Create Project</button
-		>
+		<header>
+			<h2>Projects</h2>
+			<button onclick={() => createProjectDialog?.showModal()}
+				>New Project</button
+			>
+		</header>
 		{#if projects.length === 0}
 			<p>No active projects found.</p>
 		{/if}
 		{#each projects as project}
-			<div class="project">
-				<h2>{project.name}</h2>
-				{#if activeProject === project}
-					<p class="active">Active</p>
-				{/if}
-			</div>
+			<button
+				type="button"
+				class:active={activeProject === project}
+				class="project"
+				onclick={() => (activeProject = project)}>{project.name}</button
+			>
 		{/each}
 	</projects>
-	<issues> </issues>
+	<issues>
+		<header>
+			<h2>Issues</h2>
+			<button onclick={() => createIssueDialog?.showModal}>Create Issue</button>
+		</header>
+		<div>
+			{#if issues.length === 0}
+				<p>No issues found for this project.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Status</th>
+							<th>Title</th>
+							<th>Priority</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each issues as issue}
+							<tr>
+								<td>{status_to_string(issue.status)}</td>
+								<td><a href={`/issue/${issue.id}`}>{issue.title}</a></td>
+								<td>{priority_to_string(issue.priority)}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</div>
+	</issues>
 </grid>
 
 <style>
@@ -46,5 +123,53 @@
 	issues {
 		overflow-y: scroll;
 		padding: 16px;
+	}
+	header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 32px;
+	}
+	.project {
+		display: block;
+		padding: 16px;
+		border-radius: 4px;
+		border: 0;
+		margin-bottom: 8px;
+		background-color: transparent;
+		width: 100%;
+		position: relative;
+		text-align: left;
+	}
+	.project.active {
+		background-color: #f0f0f0;
+		font-weight: bold;
+	}
+	.project.active::before {
+		content: "•";
+		position: absolute;
+		right: 16px;
+		color: black;
+	}
+	.project:hover {
+		background-color: #f0f0f0;
+		cursor: pointer;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	thead {
+		background-color: #f0f0f0;
+	}
+	th {
+		padding: 8px;
+		text-align: left;
+		border-bottom: 1px solid #cfcfcf;
+	}
+	tr {
+		border-bottom: 1px solid #cfcfcf;
+		height: 50px;
 	}
 </style>
