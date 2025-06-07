@@ -42,6 +42,24 @@ declare module 'dexie' {
 			syncConfig?: { sync: Array<keyof T> },
 		): Version;
 	}
+	namespace Dexie {
+		interface Dexie {
+			transaction: {
+				// Single table overload
+				<T>(
+					mode: 'r' | 'rw' | 'rw!' | 'rw?' | 'r!' | 'r?',
+					table: string | Dexie.Table,
+					fn: (tx: Transaction) => Promise<T>,
+				): Promise<T>;
+				// Array of tables overload
+				<T>(
+					mode: 'r' | 'rw' | 'rw!' | 'rw?' | 'r!' | 'r?',
+					tables: (string | Dexie.Table)[],
+					fn: (tx: Transaction) => Promise<T>,
+				): Promise<T>;
+			};
+		}
+	}
 }
 
 // Add the remote_id index to synced tables
@@ -202,6 +220,48 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 					},
 				);
 				return result;
+			},
+	);
+
+	/**
+	 * overwrite the Dexie.transaction method to add writeLog to the parent transaction if table is a synced store
+	 */
+	db.transaction = Dexie.override(
+		db.transaction,
+		(original) =>
+			function (
+				this: Dexie,
+				mode: 'r' | 'rw' | 'readwrite',
+				storeNames: string | Dexie.Table | (string | Dexie.Table)[],
+				fn: (tx: typeof db.transaction) => Promise<unknown>,
+			) {
+				// If the transaction is a sync transaction, call the original method
+				if (Dexie.currentTransaction?._isSyncTransaction) {
+					return original.call(this, mode, storeNames, fn);
+				}
+				console.log(storeNames);
+
+				// Helper function to extract table name from string or Dexie.Table
+				const getTableName = (store: string | Dexie.Table): string => {
+					return typeof store === 'string' ? store : store.name;
+				};
+
+				const isSyncedStore = Array.isArray(storeNames)
+					? storeNames.some((store) =>
+							db._syncedStores.includes(getTableName(store)),
+						)
+					: db._syncedStores.includes(getTableName(storeNames));
+
+				if (!isSyncedStore) {
+					return original.call(this, mode, storeNames, fn);
+				}
+
+				// Convert storeNames to array of strings for concatenation
+				const storeNamesArray = Array.isArray(storeNames)
+					? storeNames.map(getTableName)
+					: [getTableName(storeNames)];
+
+				return original.call(this, mode, ['_writeLog', ...storeNamesArray], fn);
 			},
 	);
 

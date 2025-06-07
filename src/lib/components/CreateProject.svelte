@@ -36,11 +36,18 @@
 		const description = formData.get("description") as string;
 		const repositoryId = formData.get("repository") as string;
 
-		await db.projects.add({
-			name: projectName,
-			description,
-			has_repository: isSynced,
-			...(isSynced && { repository_id: parseInt(repositoryId) }),
+		await db.transaction("rw", [db.projects, db.repositories], async () => {
+			const id = await db.projects.add({
+				name: projectName,
+				description,
+				has_repository: isSynced,
+				...(isSynced && { repository_id: parseInt(repositoryId) }),
+			});
+			if (isSynced && repositoryId) {
+				await db.repositories.update(parseInt(repositoryId), {
+					project_id: id,
+				});
+			}
 		});
 
 		closeDialog();
