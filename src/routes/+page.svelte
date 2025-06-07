@@ -22,6 +22,9 @@
 		{#each projects as project}
 			<div class="project">
 				<h2>{project.name}</h2>
+				{#if activeProject === project}
+					<p class="active">Active</p>
+				{/if}
 			</div>
 		{/each}
 	</projects>

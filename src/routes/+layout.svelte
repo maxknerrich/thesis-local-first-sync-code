@@ -23,6 +23,8 @@
 	:global(body) {
 		display: grid;
 		grid-template-rows: 66px 1fr;
+		font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
+			"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 	}
 	main,
 	header {

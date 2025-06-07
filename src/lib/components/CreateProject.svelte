@@ -25,26 +25,22 @@
 		}
 	});
 
-	$effect(() => {
-		promise = sync.syncTable("repositories");
-	});
-
 	function closeDialog() {
 		dialogElement?.close();
 	}
 
-	function handleSubmit(event: SubmitEvent) {
+	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();
 		const formData = new FormData(event.target as HTMLFormElement);
 		const projectName = formData.get("project-name") as string;
 		const description = formData.get("description") as string;
 		const repositoryId = formData.get("repository") as string;
 
-		// TODO: Add project creation logic here
-		console.log("Creating project:", {
-			projectName,
+		await db.projects.add({
+			name: projectName,
 			description,
-			repositoryId: repositoryId || null,
+			has_repository: isSynced,
+			...(isSynced && { repository_id: parseInt(repositoryId) }),
 		});
 
 		closeDialog();
@@ -82,9 +78,9 @@
 				{/await}
 			{/if}
 
-			<button onclick={closeDialog} class="close-btn">X</button>
 			<button type="submit">Create Project</button>
 		</form>
+		<button onclick={closeDialog} class="close-btn">X</button>
 	</div>
 </dialog>
 
