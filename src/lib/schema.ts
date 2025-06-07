@@ -22,3 +22,31 @@ export interface Repository {
 	description: string;
 	project_id?: number;
 }
+
+export function status_to_string(status: 0 | 1 | 2 | 3): string {
+	switch (status) {
+		case 0:
+			return 'Open';
+		case 1:
+			return 'In Progress';
+		case 2:
+			return 'Closed';
+		case 3:
+			return 'Backlog';
+		default:
+			return 'Unknown';
+	}
+}
+
+export function priority_to_string(priority: 0 | 1 | 2): string {
+	switch (priority) {
+		case 0:
+			return 'Low';
+		case 1:
+			return 'Medium';
+		case 2:
+			return 'High';
+		default:
+			return 'Unknown';
+	}
+}
