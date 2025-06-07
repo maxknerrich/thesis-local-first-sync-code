@@ -12,7 +12,7 @@ const db = new Dexie('LocalIssueDB', {
 
 db.version(1).stores(
 	{
-		issues: '++id, github_number',
+		issues: '++id, github_number, project_id',
 		projects: '++id, name',
 		repositories: '++id, project_id',
 	},
