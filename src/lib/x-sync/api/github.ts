@@ -26,6 +26,7 @@ export type SchemaConfig<
 > = {
 	[K in keyof TSchema]: {
 		tableName: keyof TDB | K;
+		initialData?: Partial<TSchema[K]>;
 		toLocal: <S>(
 			remote: K extends 'issues' ? RemoteIssue : RemoteRepo,
 			callbacks?: S,
@@ -58,7 +59,33 @@ export class GitHubSync<
 		syncConfig?: syncConfig;
 		schema: SchemaConfig<TSchema, Dexie>;
 	}) {
-		super({ db, ...(syncConfig && { syncConfig }) });
+		const initialData = Object.entries(schema).reduce(
+			(acc, [key, value]) => {
+				if (value.initialData) {
+					acc[key] = value.initialData;
+				}
+				return acc;
+			},
+			{} as Record<string, Partial<DBObject>>,
+		);
+
+		const superArgs: {
+			db: TDB;
+			syncConfig?: syncConfig;
+			initialData?: { [K in keyof TDB]: Partial<DBObject> };
+		} = { db };
+
+		if (syncConfig) {
+			superArgs.syncConfig = syncConfig;
+		}
+
+		if (Object.keys(initialData).length > 0) {
+			superArgs.initialData = initialData as {
+				[K in keyof TDB]: Partial<DBObject>;
+			};
+		}
+
+		super(superArgs);
 		this.schema = schema;
 		this.headers = {
 			Accept: 'application/vnd.github.text+json',

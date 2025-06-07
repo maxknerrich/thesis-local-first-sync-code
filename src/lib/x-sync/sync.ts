@@ -51,8 +51,17 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	private readonly default_interval = 5 * 60; // 5 minutes in seconds
 	private lastSync: LastSync<TDB>;
 	private syncConfig?: syncConfig;
+	private initialData: { [K in keyof TDB]: Partial<DBObject> } | undefined;
 
-	constructor({ db, syncConfig }: { db: TDB; syncConfig?: syncConfig }) {
+	constructor({
+		db,
+		syncConfig,
+		initialData,
+	}: {
+		db: TDB;
+		syncConfig?: syncConfig;
+		initialData?: { [K in keyof TDB]: Partial<DBObject> };
+	}) {
 		this.db = db;
 		this.manager = createManager();
 
@@ -77,6 +86,10 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 				lastSync: 'never',
 				status: 'idle',
 			} as TableMetadata;
+		}
+
+		if (initialData) {
+			this.initialData = initialData;
 		}
 
 		console.log(
@@ -117,11 +130,9 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	abstract pushDelete({ table, item }: DeleteItem): Promise<void>;
 
 	protected async sync(signal: AbortSignal): Promise<void> {
-		console.log('Starting sync process...');
 		if (signal.aborted) {
 			return;
 		}
-
 		// Check basic connectivity
 		if (window.navigator.onLine === false) {
 			this.offline();
@@ -173,7 +184,6 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 				tasks.map((task) => this.manager.untilTaskRunDone(task)),
 			);
 		}
-		console.log('edb sync process...');
 		this.manager.scheduleTaskRun('sync', undefined, 10 * 1000); // run again in 10 seconds
 	}
 	private getWritesPerObject(
@@ -227,10 +237,12 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		writeLogPerObject,
 		remoteData,
 		localItems,
+		table,
 	}: {
 		writeLogPerObject: Map<number, WriteLogEntry[]>;
 		remoteData: PullResult;
 		localItems: DBObject[];
+		table: keyof TDB;
 	}) {
 		const categories: CategoriesObject = {
 			newLocal: [],
@@ -266,7 +278,10 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 				});
 				continue;
 			}
-			categories.newRemote.push(remoteItem);
+			const initialData = this.initialData?.[table];
+			categories.newRemote.push(
+				initialData ? Object.assign(remoteItem, initialData) : remoteItem,
+			);
 		}
 		for (const [key, value] of writeLogPerObject.entries()) {
 			if (seenIDs.has(key)) continue;
@@ -428,6 +443,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		if (typeof table !== 'string') {
 			throw new Error('Table name must be a string');
 		}
+
 		this.lastSync[table].status = 'syncing';
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 		const since = this.getSince(table);
@@ -444,7 +460,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		if (remoteData.data.length === 0 && writeLog.length === 0) {
 			console.log(`No data to sync for table ${table}`);
 
-			this.markSynced(table);
+			await this.markSynced(table);
 			return;
 		}
 		const writeLogPerObject = this.getWritesPerObject(writeLog);
@@ -458,6 +474,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 			writeLogPerObject,
 			remoteData: remoteData.data,
 			localItems,
+			table,
 		});
 		if (this.syncConfig?.[table]?.path === 'r') {
 			await this.handleReadOnly({ localTable, categories });
@@ -466,7 +483,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		}
 		// Clear the write log for the table
 		await this.db._writeLog.bulkDelete(writeLog.map((entry) => entry.number));
-		this.markSynced(table);
+		await this.markSynced(table);
 	}
 	private async handleReadOnly({
 		localTable,

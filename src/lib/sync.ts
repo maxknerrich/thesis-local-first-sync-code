@@ -26,22 +26,19 @@ export const sync = new GitHubSync<Schema, typeof db>({
 	schema: {
 		issues: {
 			tableName: 'issues',
+			initialData: {
+				priority: 1,
+			},
 			repos_to_fetch: () =>
-				db.projects
-					.filter((e) => e.has_repository)
+				db.repositories
+					.filter((repo) => repo.project_id !== undefined)
 					.toArray()
-					.then((project) =>
-						db.repositories
-							.where('project_id')
-							.anyOf(project.map((p) => p.id))
-							.toArray(),
-					)
-					.then((repos) =>
-						repos.map((repo) => ({
+					.then((repos) => {
+						return repos.map((repo) => ({
 							full_name: repo.full_name,
 							id: repo.project_id as number,
-						})),
-					),
+						}));
+					}),
 			getRepo: (issue) =>
 				db.projects
 					.get(issue.project_id)
