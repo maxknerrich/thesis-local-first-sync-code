@@ -154,19 +154,35 @@ export class GitHubSync<
 					item as TSchema['issues'],
 				);
 				if (!repo) return { key: item.id, changes: {} };
+				const remoteData = this.schema.issues.toRemote(
+					data as TSchema['issues'],
+				);
+				const { state: _, ...createData } = remoteData;
 				const { data: pullData, error } = await safeFetch<
 					paths['/repos/{owner}/{repo}/issues']['post']['responses']['201']['content']['application/json']
 				>(`https://api.github.com/repos/${repo}/issues`, {
 					method: 'POST',
 					headers: this.headers,
 					body: JSON.stringify(
-						this.schema.issues.toRemote(data as TSchema['issues']),
+						this.schema.issues.toRemote(createData as TSchema['issues']),
 					),
 				});
 				if (error) {
 					throw new Error(`Failed to create issue: ${error}`);
 				}
-				console.log(`Creating issue in ${repo}`, pullData);
+				if ((data as TSchema['issues']).status === 2) {
+					const res = await safeFetch(
+						`https://api.github.com/repos/${repo}/issues/${pullData.number}`,
+						{
+							method: 'PATCH',
+							headers: this.headers,
+							body: JSON.stringify({ state: 'closed' }),
+						},
+					);
+					if (res.error) {
+						throw new Error(`Failed to close issue: ${res.error}`);
+					}
+				}
 				return {
 					key: item.id,
 					changes: {
