@@ -1,6 +1,6 @@
-import { AsyncQueuer } from '@tanstack/pacer';
 import type Dexie from 'dexie';
 import { createManager, type Manager } from 'tinytick';
+import { PushQueue } from './pushQueue';
 import type {
 	ConflictItem,
 	DBObject,
@@ -358,29 +358,11 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 
 	private async applyChanges(categories: CategoriesObject, table: keyof TDB) {
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
-		let localUpdatesFromRemote: CreateReturn[] = [];
-		const pushQueue = new AsyncQueuer(
-			async (
-				item:
-					| { type: 'create'; data: CreateItem }
-					| { type: 'update'; data: UpdateItem }
-					| { type: 'delete'; data: DeleteItem },
-			) => {
-				const { type, data } = item;
-				if (type === 'create') {
-					return await this.pushCreate(data).then((item) =>
-						localUpdatesFromRemote.push(item),
-					);
-				} else if (type === 'update') {
-					return await this.pushUpdate(data);
-				} else if (type === 'delete') {
-					return await this.pushDelete(data);
-				}
-			},
-			{
-				concurrency: 5,
-			},
-		);
+		const localUpdatesFromRemote: CreateReturn[] = [];
+
+		// Create a push queue for handling remote operations
+		const pushQueue = new PushQueue(100, 180); // 100 concurrent, 180 per minute
+
 		const {
 			newLocal,
 			newRemote,
@@ -390,42 +372,56 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 			conflicts,
 		} = categories;
 
+		// Queue create operations
 		for (const item of newLocal) {
-			pushQueue.addItem({
-				type: 'create',
-				data: { table: 'issues', item: item.item, data: item.data },
+			pushQueue.add(async () => {
+				return this.pushCreate({
+					table: table as string,
+					item: item.item,
+					data: item.data,
+				}).then((result) => {
+					localUpdatesFromRemote.push(result);
+					return result;
+				});
 			});
 		}
+
+		// Queue update operations
 		for (const item of updatedLocal) {
-			pushQueue.addItem({
-				type: 'update',
-				data: {
-					table: 'issues',
+			pushQueue.add(async () => {
+				return this.pushUpdate({
+					table: table as string,
 					item: item.item,
 					data: item.changes as DBObject,
-				},
+				});
 			});
 		}
+
+		// Queue delete operations
 		for (const item of deletedLocal) {
-			pushQueue.addItem({
-				type: 'delete',
-				data: {
-					table: 'issues',
+			pushQueue.add(async () => {
+				return this.pushDelete({
+					table: table as string,
 					item,
-				},
+				});
 			});
 		}
+
+		// Queue conflict resolution operations
 		for (const item of conflicts) {
-			pushQueue.addItem({
-				type: 'update',
-				data: {
-					table: 'issues',
+			pushQueue.add(async () => {
+				return this.pushUpdate({
+					table: table as string,
 					item: item.item,
 					data: item.changes as DBObject,
-				},
+				});
 			});
 		}
-		while (pushQueue.getIsRunning() && !pushQueue.getIsEmpty()) {}
+
+		// Mark queue as done and wait for all operations to complete
+		await pushQueue.done();
+
+		console.log('bulk updatee', localUpdatesFromRemote);
 		await this.db.transaction('rw', localTable, async (trans) => {
 			trans._isSyncTransaction = true;
 			localTable.bulkAdd(newRemote);

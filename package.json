@@ -24,7 +24,6 @@
 		"vite": "^6.2.6"
 	},
 	"dependencies": {
-		"@tanstack/pacer": "^0.8.0",
 		"dexie": "^4.0.11",
 		"tinytick": "^1.2.8"
 	},
