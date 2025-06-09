@@ -9,6 +9,7 @@
 		status_to_string,
 	} from "$lib/schema";
 	import { stateQuery } from "$lib/stateQuery.svelte";
+	import { sync } from "$lib/sync";
 
 	let issuesQuery: ReturnType<typeof stateQuery> | undefined =
 		$state(undefined);
@@ -44,6 +45,7 @@
 {:else}
 	<IssuesHeader>
 		<button onclick={() => createIssueDialog?.showModal()}>Create Issue</button>
+		<button onclick={() => sync.syncTable("issues")}>Sync</button>
 	</IssuesHeader>
 	<div>
 		{#if issues.length === 0}
