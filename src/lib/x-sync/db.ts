@@ -239,7 +239,6 @@ export function X_Sync_Addon_Dexie(db: Dexie) {
 				if (Dexie.currentTransaction?._isSyncTransaction) {
 					return original.call(this, mode, storeNames, fn);
 				}
-				console.log(storeNames);
 
 				// Helper function to extract table name from string or Dexie.Table
 				const getTableName = (store: string | Dexie.Table): string => {
