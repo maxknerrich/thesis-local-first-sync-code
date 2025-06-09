@@ -120,12 +120,9 @@ export class GitHubSync<
 			case this.schema.repos.tableName: {
 				const data = await paginatedFetch<
 					paths['/users/{username}/repos']['get']['responses']['200']['content']['application/json']
-				>(
-					`https://api.github.com/user/repos${since ? `?since=${since.toISOString()}` : ''}`,
-					{
-						headers: this.headers,
-					},
-				).then((res) => {
+				>(`https://api.github.com/user/repos`, {
+					headers: this.headers,
+				}).then((res) => {
 					return (
 						res.data?.map((repo: RemoteRepo) =>
 							this.schema.repos.toLocal(repo),
@@ -169,6 +166,7 @@ export class GitHubSync<
 				if (error) {
 					throw new Error(`Failed to create issue: ${error}`);
 				}
+				console.log(`Creating issue in ${repo}`, pullData);
 				return {
 					key: item.id,
 					changes: {
