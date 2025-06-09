@@ -360,8 +360,8 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 		const localUpdatesFromRemote: CreateReturn[] = [];
 
-		// Create a push queue for handling remote operations
-		const pushQueue = new PushQueue(100, 180); // 100 concurrent, 180 per minute
+		// Create a push queue for handling remote operations, sharing the same manager
+		const pushQueue = new PushQueue(100, 180, this.manager); // 100 concurrent, 180 per minute
 
 		const {
 			newLocal,

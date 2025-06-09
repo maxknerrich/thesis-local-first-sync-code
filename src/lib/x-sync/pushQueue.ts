@@ -1,3 +1,5 @@
+import { createManager, type Manager } from 'tinytick';
+
 interface QueueItem {
 	id: string;
 	operation: () => Promise<unknown>;
@@ -29,13 +31,29 @@ export class PushQueue {
 		lastRequestTime: 0,
 	};
 
-	// Processing state
-	private processingInterval: ReturnType<typeof setInterval> | null = null;
+	// Processing state with tinytick
+	private readonly manager: Manager;
+	private readonly ownManager: boolean;
 	private isProcessing = false;
+	private processingInterval: ReturnType<typeof setInterval> | null = null; // Fallback for when tinytick doesn't work
 
-	constructor(maxConcurrent: number = 100, maxUpdatesPerMinute: number = 180) {
+	constructor(
+		maxConcurrent: number = 100,
+		maxUpdatesPerMinute: number = 180,
+		manager?: Manager,
+	) {
 		this.maxConcurrent = maxConcurrent;
 		this.maxUpdatesPerMinute = maxUpdatesPerMinute;
+
+		if (manager) {
+			this.manager = manager;
+			this.ownManager = false;
+		} else {
+			this.manager = createManager();
+			this.ownManager = true;
+		}
+
+		this.setupTasks();
 		this.start();
 	}
 
@@ -57,6 +75,9 @@ export class PushQueue {
 			};
 
 			this.queue.push(item);
+
+			// Trigger immediate processing if not already scheduled
+			this.manager.scheduleTaskRun('processQueue', undefined, 0);
 		});
 	}
 
@@ -96,14 +117,37 @@ export class PushQueue {
 		};
 	}
 
-	private start() {
-		if (this.processingInterval) {
-			return;
-		}
+	private setupTasks() {
+		this.manager.setTask(
+			'processQueue',
+			async () => this.processQueue(),
+			'pushQueueHandler',
+		);
+	}
 
-		this.processingInterval = setInterval(() => {
-			this.processQueue();
-		}, 100); // Check every 100ms
+	private start() {
+		if (this.ownManager) {
+			this.manager.start();
+		}
+		// Try to schedule with tinytick, but fallback to setInterval if it doesn't work
+		try {
+			this.manager.scheduleTaskRun('processQueue', undefined, 100); // Run every 100ms
+		} catch (error) {
+			console.warn(
+				'Tinytick scheduling failed, falling back to setInterval:',
+				error,
+			);
+			// Fallback to setInterval if tinytick doesn't work
+			this.startFallback();
+		}
+	}
+
+	private startFallback() {
+		if (!this.processingInterval) {
+			this.processingInterval = setInterval(() => {
+				this.processQueue();
+			}, 100);
+		}
 	}
 
 	private async processQueue() {
@@ -127,6 +171,11 @@ export class PushQueue {
 
 			// Check if we should resolve the done promise
 			this.checkDoneCondition();
+
+			// Schedule next run if not done
+			if (!this.isDone || this.queue.length > 0 || this.processing.size > 0) {
+				this.manager.scheduleTaskRun('processQueue', undefined, 100);
+			}
 		} finally {
 			this.isProcessing = false;
 		}
@@ -193,11 +242,8 @@ export class PushQueue {
 				this.queueReject = null;
 			}
 
-			// Clean up the interval
-			if (this.processingInterval) {
-				clearInterval(this.processingInterval);
-				this.processingInterval = null;
-			}
+			// Clean up the task - no need to stop interval since we're using tinytick
+			this.manager.delTask('processQueue');
 		}
 	}
 
@@ -205,9 +251,11 @@ export class PushQueue {
 	 * Stop the queue and reject any pending operations
 	 */
 	stop() {
-		if (this.processingInterval) {
-			clearInterval(this.processingInterval);
-			this.processingInterval = null;
+		// Clean up tinytick task
+		this.manager.delTask('processQueue');
+
+		if (this.ownManager) {
+			this.manager.stop();
 		}
 
 		// Reject all pending items
@@ -228,19 +276,16 @@ export class PushQueue {
 	 * Pause the queue processing
 	 */
 	pause() {
-		if (this.processingInterval) {
-			clearInterval(this.processingInterval);
-			this.processingInterval = null;
-		}
+		this.manager.delTask('processQueue');
 	}
 
 	/**
 	 * Resume the queue processing
 	 */
 	resume() {
-		if (!this.processingInterval) {
-			this.start();
-		}
+		// Re-setup the task and schedule it
+		this.setupTasks();
+		this.manager.scheduleTaskRun('processQueue', undefined, 100);
 	}
 
 	/**
@@ -272,6 +317,7 @@ export class PushQueue {
 	 * Check if the queue is currently processing items
 	 */
 	get isActive(): boolean {
-		return this.processingInterval !== null;
+		// Check if we have queued items or are currently processing
+		return this.queue.length > 0 || this.processing.size > 0 || !this.isDone;
 	}
 }

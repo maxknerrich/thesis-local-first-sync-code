@@ -31,6 +31,9 @@ async function testBasicQueue() {
 
 	console.log('All operations completed:', results);
 	console.log('Queue status:', queue.getStatus());
+
+	// Clean up
+	queue.stop();
 }
 
 // Test rate limiting
@@ -50,6 +53,9 @@ async function testRateLimit() {
 
 	console.log(`Rate limited queue completed in ${endTime - startTime}ms`);
 	console.log('Queue status:', queue.getStatus());
+
+	// Clean up
+	queue.stop();
 }
 
 // Test error handling
@@ -71,16 +77,7 @@ async function testErrorHandling() {
 	} catch (error) {
 		console.error('Unexpected error:', error);
 	}
-}
 
-// Run tests if this file is executed directly
-if (typeof window === 'undefined') {
-	// Running in Node.js environment
-	testBasicQueue()
-		.then(() => testRateLimit())
-		.then(() => testErrorHandling())
-		.then(() => console.log('All tests completed'))
-		.catch(console.error);
+	// Clean up
+	queue.stop();
 }
-
-export { testBasicQueue, testRateLimit, testErrorHandling };
