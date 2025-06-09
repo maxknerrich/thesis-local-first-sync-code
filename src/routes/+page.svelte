@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CreateIssue from "$lib/components/CreateIssue.svelte";
 	import CreateProject from "$lib/components/CreateProject.svelte";
 	import { db } from "$lib/db";
 	import {
@@ -12,7 +13,7 @@
 	const projectsQuery = stateQuery(async () => await db.projects.toArray());
 	const projects = $derived(projectsQuery.current ?? []);
 
-	let hasSyncStarted = $state(false);
+	// let hasSyncStarted = $state(false);
 
 	$effect(() => {
 		if (!activeProject && projects.length > 0) {
@@ -20,21 +21,14 @@
 		}
 		if (activeProject) {
 			document.title = `Issues - ${activeProject.name}`;
+			if (activeProject.has_repository) {
+				document.title += " (GitHub)";
+				sync.start();
+			} else {
+				sync.stop();
+			}
 		} else {
 			document.title = "Issues";
-		}
-	});
-
-	$effect(() => {
-		// Only run sync once when projects are loaded and at least one has a repository
-		if (!hasSyncStarted && projects.length > 0) {
-			const hasProjectWithRepo = projects.some(
-				(project) => project.has_repository,
-			);
-			if (hasProjectWithRepo) {
-				sync.start();
-				hasSyncStarted = true;
-			}
 		}
 	});
 
@@ -53,9 +47,13 @@
 
 	let activeProject: Project | undefined = $state();
 	let createProjectDialog = $state<HTMLDialogElement>();
+	let createIssueDialog = $state<HTMLDialogElement>();
 </script>
 
 <CreateProject bind:dialog={createProjectDialog} />
+{#if activeProject}
+	<CreateIssue bind:dialog={createIssueDialog} {activeProject} />
+{/if}
 <grid>
 	<projects>
 		<header>
@@ -77,34 +75,46 @@
 		{/each}
 	</projects>
 	<issues>
-		<header>
-			<h2>Issues</h2>
-			<button onclick={() => createIssueDialog?.showModal}>Create Issue</button>
-		</header>
-		<div>
-			{#if issues.length === 0}
-				<p>No issues found for this project.</p>
-			{:else}
-				<table>
-					<thead>
-						<tr>
-							<th>Status</th>
-							<th>Title</th>
-							<th>Priority</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each issues as issue}
+		{#if !activeProject}
+			<p>Select a project to view its issues.</p>
+		{:else}
+			<header>
+				<h2>Issues</h2>
+				<button onclick={() => createIssueDialog?.showModal()}
+					>Create Issue</button
+				>
+			</header>
+			<div>
+				{#if issues.length === 0}
+					<p>No issues found for this project.</p>
+				{:else}
+					<table>
+						<thead>
 							<tr>
-								<td>{status_to_string(issue.status)}</td>
-								<td><a href={`/issue/${issue.id}`}>{issue.title}</a></td>
-								<td>{priority_to_string(issue.priority)}</td>
+								<th>Status</th>
+								<th>Title</th>
+								<th>Priority</th>
+								{#if activeProject?.has_repository}
+									<th>GitHub Nr</th>
+								{/if}
 							</tr>
-						{/each}
-					</tbody>
-				</table>
-			{/if}
-		</div>
+						</thead>
+						<tbody>
+							{#each issues as issue}
+								<tr>
+									<td>{status_to_string(issue.status)}</td>
+									<td><a href={`/issue/${issue.id}`}>{issue.title}</a></td>
+									<td>{priority_to_string(issue.priority)}</td>
+									{#if activeProject?.has_repository}
+										<td>{issue.github_number}</td>
+									{/if}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{/if}
+			</div>
+		{/if}
 	</issues>
 </grid>
 
