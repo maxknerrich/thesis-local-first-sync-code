@@ -31,7 +31,7 @@
 	});
 </script>
 
-<header>
+<header class="header">
 	<h1>LocalIssues</h1>
 	<Fps height={50}></Fps>
 </header>
@@ -78,12 +78,12 @@
 			"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 	}
 	main,
-	header {
+	.header {
 		padding: 16px;
 		overflow: hidden;
 		margin: 0;
 	}
-	.projects-header {
+	.header {
 		height: 50px;
 		display: flex;
 		align-items: center;
@@ -103,7 +103,7 @@
 		overflow-y: scroll;
 		padding: 16px;
 	}
-	header {
+	.projects-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
