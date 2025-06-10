@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from "$app/navigation";
 	import { activeProject } from "$lib/activeProject.svelte";
 	import IssuesHeader from "$lib/components/IssuesHeader.svelte";
 	import { db } from "$lib/db";
@@ -82,6 +83,13 @@
 			originalIssue = { ...resolvedIssue, ...updates };
 		}
 	}
+
+	async function deleteIssue() {
+		if (confirm("Are you sure you want to delete this issue?")) {
+			await db.issues.delete(data.id);
+			goto("/");
+		}
+	}
 </script>
 
 <IssuesHeader id={data.id}>
@@ -92,6 +100,7 @@
 	<p>Loading...</p>
 {:then issue}
 	{#if issue}
+		<button onclick={() => deleteIssue()}>Delete Issue</button>
 		<form onsubmit={onSubmit}>
 			<div>
 				<input
