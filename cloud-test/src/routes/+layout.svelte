@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { browser } from "$app/environment";
+	import FPS from "$lib/components/FPS.svelte";
 	import Sidebar from "$lib/components/Sidebar.svelte";
 	import type { Snippet } from "svelte";
 
@@ -6,6 +8,9 @@
 </script>
 
 <div class="app-layout">
+	{#if browser}
+		<FPS height={50}></FPS>
+	{/if}
 	<Sidebar repositories={data.repositories} />
 	<main class="main-content">
 		{@render children()}
