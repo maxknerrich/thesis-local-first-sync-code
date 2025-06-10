@@ -359,9 +359,8 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	private async applyChanges(categories: CategoriesObject, table: keyof TDB) {
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 		const localUpdatesFromRemote: CreateReturn[] = [];
-
 		// Create a push queue for handling remote operations, sharing the same manager
-		const pushQueue = new PushQueue(100, 180, this.manager); // 100 concurrent, 180 per minute
+		const pushQueue = new PushQueue(100, 180); // 100 concurrent, 180 per minute
 
 		const {
 			newLocal,
@@ -380,7 +379,9 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 					item: item.item,
 					data: item.data,
 				}).then((result) => {
-					localUpdatesFromRemote.push(result);
+					if (result.changes.remote_id) {
+						localUpdatesFromRemote.push(result);
+					}
 					return result;
 				});
 			});
@@ -421,7 +422,6 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		// Mark queue as done and wait for all operations to complete
 		await pushQueue.done();
 
-		console.log('bulk updatee', localUpdatesFromRemote);
 		await this.db.transaction('rw', localTable, async (trans) => {
 			trans._isSyncTransaction = true;
 			localTable.bulkAdd(newRemote);
