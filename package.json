@@ -16,6 +16,7 @@
   },
   "homepage": "https://github.com/maxknerrich/bachelor-code#readme",
   "devDependencies": {
+    "@biomejs/biome": "1.9.4",
     "@playwright/test": "1.52.0",
     "@types/node": "^24.0.0"
   },
