@@ -18,5 +18,9 @@
   "devDependencies": {
     "@playwright/test": "1.52.0",
     "@types/node": "^24.0.0"
+  },
+  "dependencies": {
+    "@octokit/graphql": "^9.0.1",
+    "dotenv": "^16.5.0"
   }
 }
