@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { enhance } from "$app/forms";
+	import { applyAction, enhance } from "$app/forms";
+	import { invalidateAll } from "$app/navigation";
 	import type { Repository } from "$lib/types.js";
 
 	let {
@@ -43,15 +44,16 @@
 			<form
 				method="POST"
 				action="?/createIssue"
-				use:enhance={() => {
-					return async ({ update }) => {
-						await update();
-						// Reset form and close dialog on success
+				use:enhance
+				onsubmit={() => {
+					// Reset form and close dialog when submitting
+					// (SvelteKit will handle data invalidation automatically)
+					setTimeout(() => {
 						title = "";
 						body = "";
 						issueState = "open";
 						show = false;
-					};
+					}, 100);
 				}}
 			>
 				<input

@@ -1,13 +1,15 @@
+import { createIssue, fetchRepositoryIssues } from '$lib/server/github.js';
+import type { Repository } from '$lib/types.js';
 import { error, fail, redirect } from '@sveltejs/kit';
-import { fetchRepositoryIssues, createIssue } from '$lib/server/github.js';
 
 export const load = async ({ params, parent }) => {
+	console.log('Load function called for:', params);
 	const parentData = await parent();
 	const { owner, repo } = params;
-	
+
 	// Find the repository in the user's repositories
 	const selectedRepository = parentData.repositories.find(
-		(r: any) => r.owner.login === owner && r.name === repo
+		(r: Repository) => r.owner.login === owner && r.name === repo
 	);
 
 	if (!selectedRepository) {
@@ -15,7 +17,9 @@ export const load = async ({ params, parent }) => {
 	}
 
 	try {
+		console.log('Fetching issues for:', owner, repo);
 		const issues = await fetchRepositoryIssues(owner, repo);
+		console.log('Issues fetched:', issues.length);
 		return {
 			issues,
 			selectedRepository
@@ -31,15 +35,19 @@ export const load = async ({ params, parent }) => {
 };
 
 export const actions = {
-	createIssue: async ({ request, params }) => {
+	createIssue: async ({ request, params, url }) => {
+		console.log('createIssue action called');
 		const { owner, repo } = params;
 		const data = await request.formData();
 		const title = data.get('title') as string;
 		const body = data.get('body') as string;
 		const state = data.get('state') as 'open' | 'closed';
 
+		console.log('Form data:', { title, body, state, owner, repo });
+
 		if (!title?.trim()) {
-			return fail(400, { 
+			console.log('Validation failed: title is required');
+			return fail(400, {
 				error: 'Title is required',
 				title,
 				body,
@@ -48,17 +56,19 @@ export const actions = {
 		}
 
 		try {
-			await createIssue(owner, repo, {
+			console.log('Creating issue...');
+			const newIssue = await createIssue(owner, repo, {
 				title: title.trim(),
 				body: body?.trim() || undefined,
 				state
 			});
 
-			// Redirect back to the repository page to refresh the issues list
-			throw redirect(303, `/${owner}/${repo}`);
+			console.log('Issue created successfully:', newIssue.id);
+			// Return the newly created issue so we can update the UI optimistically
+			return { success: true, issue: newIssue };
 		} catch (error) {
 			console.error('Failed to create issue:', error);
-			return fail(500, { 
+			return fail(500, {
 				error: 'Failed to create issue',
 				title,
 				body,

@@ -1,14 +1,24 @@
 <script lang="ts">
-	import IssuesList from "$lib/components/IssuesList.svelte";
 	import CreateIssueDialog from "$lib/components/CreateIssueDialog.svelte";
+	import IssuesList from "$lib/components/IssuesList.svelte";
+	import type { ActionData, PageData } from "./$types";
 
-	let { data }: { data: any } = $props();
+	const { data, form }: { data: PageData; form: ActionData } = $props();
 	let showCreateDialog = $state(false);
-	let createDialog = $state<HTMLDialogElement>();
+	let createDialog = $state<HTMLDialogElement | undefined>();
+
+	// Optimistically update issues list when a new issue is created
+	const issues = $derived(() => {
+		if (form?.success && form?.issue) {
+			// Add the new issue to the beginning of the list
+			return [form.issue, ...data.issues];
+		}
+		return data.issues;
+	});
 </script>
 
 <IssuesList
-	issues={data.issues}
+	issues={issues()}
 	selectedRepository={data.selectedRepository}
 	bind:showCreateDialog
 />
