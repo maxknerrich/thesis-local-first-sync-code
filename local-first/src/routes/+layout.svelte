@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { activeProject, setActiveProject } from "$lib/activeProject.svelte";
+	import { page } from "$app/stores";
 	import CreateProject from "$lib/components/CreateProject.svelte";
 	import Fps from "$lib/components/FPS.svelte";
 	import { db } from "$lib/db";
@@ -13,13 +13,22 @@
 
 	let createProjectDialog = $state<HTMLDialogElement>();
 
+	// Get current project ID from page params
+	const currentProjectId = $derived(() => {
+		const params = $page.params;
+		return params.id ? parseInt(params.id, 10) : null;
+	});
+
+	// Get current project from projects list
+	const currentProject = $derived(() => {
+		if (!currentProjectId() || !projects.length) return null;
+		return projects.find((p) => p.id === currentProjectId()) || null;
+	});
+
 	$effect(() => {
-		if (!activeProject.value && projects.length > 0) {
-			setActiveProject(projects[0]);
-		}
-		if (activeProject.value) {
-			document.title = `Issues - ${activeProject.value.name}`;
-			if (activeProject.value.has_repository) {
+		if (currentProject()) {
+			document.title = `Issues - ${currentProject()!.name}`;
+			if (currentProject()!.has_repository) {
 				document.title += " (GitHub)";
 				sync.start();
 			} else {
@@ -27,6 +36,7 @@
 			}
 		} else {
 			document.title = "Issues";
+			sync.stop();
 		}
 	});
 </script>
@@ -49,11 +59,10 @@
 				<p>No active projects found.</p>
 			{/if}
 			{#each projects as project}
-				<button
-					type="button"
-					class:active={activeProject.value === project}
-					class="project"
-					onclick={() => setActiveProject(project)}>{project.name}</button
+				<a
+					href="/project/{project.id}"
+					class:active={currentProjectId() === project.id}
+					class="project">{project.name}</a
 				>
 			{/each}
 		</projects>
@@ -116,19 +125,12 @@
 		border: 0;
 		margin-bottom: 8px;
 		background-color: transparent;
-		width: 100%;
 		position: relative;
 		text-align: left;
 	}
 	.project.active {
 		background-color: #f0f0f0;
 		font-weight: bold;
-	}
-	.project.active::before {
-		content: "•";
-		position: absolute;
-		right: 16px;
-		color: black;
 	}
 	.project:hover {
 		background-color: #f0f0f0;

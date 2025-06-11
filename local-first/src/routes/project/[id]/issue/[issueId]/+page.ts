@@ -1,8 +1,10 @@
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = ({ params }) => {
-	const id = parseInt(params.id);
+	const projectId = parseInt(params.id);
+	const issueId = parseInt(params.issueId);
 	return {
-		id,
+		projectId,
+		issueId
 	};
 };

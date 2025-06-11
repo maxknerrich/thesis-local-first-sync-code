@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
-	import { activeProject } from "$lib/activeProject.svelte";
 	import IssuesHeader from "$lib/components/IssuesHeader.svelte";
 	import { db } from "$lib/db";
 	import {
@@ -9,21 +8,19 @@
 		status_to_string,
 	} from "$lib/schema";
 
-	import type { PageProps } from "./$types";
-
-	let { data }: PageProps = $props();
+	let { data }: { data: { projectId: number; issueId: number } } = $props();
 	let issue = $state<Issue | undefined>();
 	let originalIssue: Issue | undefined = $state();
 	let loading = $state(true);
 	let error = $state<string | undefined>();
 
-	// Load the issue reactively
+	// Load the issue
 	$effect(() => {
 		loading = true;
 		error = undefined;
 
 		db.issues
-			.get(data.id)
+			.get(data.issueId)
 			.then((resolvedIssue) => {
 				issue = resolvedIssue;
 				if (resolvedIssue && !originalIssue) {
@@ -59,10 +56,10 @@
 			| 1
 			| 2;
 
-		const projectId = $state.snapshot(activeProject).value?.id ?? 0;
+		const projectId = data.projectId;
 
 		// Await the issue promise to get the actual issue data
-		const resolvedIssue = await issue;
+		const resolvedIssue = issue;
 
 		if (!resolvedIssue || !originalIssue) return;
 
@@ -78,31 +75,39 @@
 
 		// Only update if there are changes
 		if (Object.keys(updates).length > 0) {
-			await db.issues.update(data.id, updates);
+			await db.issues.update(data.issueId, updates);
 			// Update original issue to reflect new state
 			originalIssue = { ...resolvedIssue, ...updates };
 		}
+
+		// Navigate back to the project page
+		goto(`/project/${data.projectId}`);
 	}
 
 	async function deleteIssue() {
 		if (confirm("Are you sure you want to delete this issue?")) {
-			await db.issues.delete(data.id);
-			goto("/");
+			await db.issues.delete(data.issueId);
+			goto(`/project/${data.projectId}`);
 		}
 	}
 </script>
 
-<IssuesHeader id={data.id}>
-	<a href="/" class="back-link">Back</a>
+<IssuesHeader id={data.issueId}>
+	<a href={`/project/${data.projectId}`} class="back-link">← Back</a>
 </IssuesHeader>
 
-{#await issue}
+{#if loading}
 	<p>Loading...</p>
-{:then issue}
-	{#if issue}
-		<button onclick={() => deleteIssue()}>Delete Issue</button>
+{:else if error}
+	<p class="error">Error: {error}</p>
+	<a href={`/project/${data.projectId}`}>Back to project</a>
+{:else if issue}
+	<div class="issue-container">
+		<button onclick={() => deleteIssue()} class="delete-button"
+			>Delete Issue</button
+		>
 		<form onsubmit={onSubmit}>
-			<div>
+			<div class="content">
 				<input
 					type="text"
 					name="title"
@@ -115,6 +120,7 @@
 					name="description"
 					class="description"
 					bind:value={issue.description}
+					placeholder="Issue description..."
 				></textarea>
 			</div>
 			<div class="meta">
@@ -130,43 +136,119 @@
 						<option value={priority}>{priority_to_string(priority)}</option>
 					{/each}
 				</select>
-				<button type="submit" class="save-button">Save</button>
+				<button type="submit" class="save-button">Save & Back</button>
 			</div>
 		</form>
-	{:else}
-		<p>Issue not found</p>
-	{/if}
-{:catch error}
-	<p>Error loading issue: {error.message}</p>
-{/await}
+	</div>
+{:else}
+	<p class="error">Issue not found</p>
+	<a href={`/project/${data.projectId}`}>Back to project</a>
+{/if}
 
 <style>
-	.title {
-		width: 80%;
-		padding: 0.5rem;
-		font-size: 1.2rem;
+	.error {
+		color: red;
 		margin-bottom: 1rem;
 	}
 
-	.description {
-		width: 80%;
-		height: 200px;
-		padding: 0.5rem;
-		font-size: 1rem;
+	.back-link {
+		color: #007acc;
+		text-decoration: none;
+	}
+
+	.back-link:hover {
+		text-decoration: underline;
+	}
+
+	.issue-container {
+		max-width: 1000px;
+		margin: 0 auto;
+		padding: 1rem;
+	}
+
+	.delete-button {
+		background-color: #dc3545;
+		color: white;
+		border: none;
+		padding: 0.5rem 1rem;
+		border-radius: 4px;
+		cursor: pointer;
+		margin-bottom: 1rem;
+	}
+
+	.delete-button:hover {
+		background-color: #c82333;
 	}
 
 	form {
 		display: grid;
-		grid-template-columns: 1fr 200px;
+		grid-template-columns: 1fr 250px;
+		gap: 1rem;
 	}
-	input,
-	textarea,
-	select {
-		border: 0px;
+
+	.content {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 	}
+
+	.title {
+		width: 100%;
+		padding: 0.75rem;
+		font-size: 1.25rem;
+		border: 1px solid #ddd;
+		border-radius: 4px;
+		box-sizing: border-box;
+	}
+
+	.description {
+		width: 100%;
+		height: 300px;
+		padding: 0.75rem;
+		font-size: 1rem;
+		border: 1px solid #ddd;
+		border-radius: 4px;
+		resize: vertical;
+		box-sizing: border-box;
+		font-family: inherit;
+	}
+
 	.meta {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.75rem;
+	}
+
+	label {
+		font-weight: 600;
+		margin-bottom: 0.25rem;
+	}
+
+	select {
+		padding: 0.5rem;
+		border: 1px solid #ddd;
+		border-radius: 4px;
+		background-color: white;
+	}
+
+	.save-button {
+		background-color: #007acc;
+		color: white;
+		border: none;
+		padding: 0.75rem 1rem;
+		border-radius: 4px;
+		cursor: pointer;
+		font-weight: 600;
+		margin-top: 1rem;
+	}
+
+	.save-button:hover {
+		background-color: #005a9e;
+	}
+
+	@media (max-width: 768px) {
+		form {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>
