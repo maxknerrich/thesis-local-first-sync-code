@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { page } from "$app/stores";
-	import { goto } from "$app/navigation";
 	import type { Repository } from "$lib/types.js";
 
-	let { repositories }: { repositories: Repository[] } = $props();
+	const { repositories }: { repositories: Repository[] } = $props();
 
 	let selectedRepoId = $state<number | null>(null);
 
@@ -19,11 +18,6 @@
 			selectedRepoId = null;
 		}
 	});
-
-	async function selectRepository(repo: Repository) {
-		selectedRepoId = repo.id;
-		await goto(`/${repo.owner.login}/${repo.name}`);
-	}
 </script>
 
 <aside class="sidebar">
@@ -41,14 +35,13 @@
 				<div class="empty">No repositories found</div>
 			{:else}
 				{#each repositories as repo}
-					<button
+					<a
+						href="/{repo.full_name}"
 						class="project-item"
 						class:active={selectedRepoId === repo.id}
-						onclick={() => selectRepository(repo)}
 					>
-						<span class="project-name">{repo.name}</span>
-						<span class="project-dropdown">▼</span>
-					</button>
+						{repo.name}
+					</a>
 				{/each}
 			{/if}
 		</div>
