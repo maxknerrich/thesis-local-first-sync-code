@@ -31,6 +31,7 @@
 			<button class="new-project-btn" onclick={() => (showCreateDialog = true)}>
 				New Issue
 			</button>
+			<span></span>
 		</div>
 
 		{#if issues.length === 0}
