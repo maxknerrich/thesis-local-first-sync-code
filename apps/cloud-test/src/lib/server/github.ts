@@ -1,11 +1,11 @@
-import { GITHUB_TOKEN } from '$env/static/private';
+import { PUBLIC_GITHUB_TOKEN } from '$env/static/public';
 import { safeFetch, paginatedFetch } from '../utils.js';
 import type { Repository, Issue, CreateIssueRequest } from '../types.js';
 
 const BASE_URL = 'https://api.github.com';
 
 const getHeaders = () => ({
-	'Authorization': `Bearer ${GITHUB_TOKEN}`,
+	'Authorization': `Bearer ${PUBLIC_GITHUB_TOKEN}`,
 	'Accept': 'application/vnd.github.v3+json',
 	'Content-Type': 'application/json'
 });
