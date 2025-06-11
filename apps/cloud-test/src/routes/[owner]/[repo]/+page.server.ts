@@ -3,7 +3,6 @@ import type { Repository } from '$lib/types.js';
 import { error, fail, redirect } from '@sveltejs/kit';
 
 export const load = async ({ params, parent }) => {
-	console.log('Load function called for:', params);
 	const parentData = await parent();
 	const { owner, repo } = params;
 
@@ -17,9 +16,7 @@ export const load = async ({ params, parent }) => {
 	}
 
 	try {
-		console.log('Fetching issues for:', owner, repo);
 		const issues = await fetchRepositoryIssues(owner, repo);
-		console.log('Issues fetched:', issues.length);
 		return {
 			issues,
 			selectedRepository
@@ -36,17 +33,14 @@ export const load = async ({ params, parent }) => {
 
 export const actions = {
 	createIssue: async ({ request, params, url }) => {
-		console.log('createIssue action called');
 		const { owner, repo } = params;
 		const data = await request.formData();
 		const title = data.get('title') as string;
 		const body = data.get('body') as string;
 		const state = data.get('state') as 'open' | 'closed';
 
-		console.log('Form data:', { title, body, state, owner, repo });
 
 		if (!title?.trim()) {
-			console.log('Validation failed: title is required');
 			return fail(400, {
 				error: 'Title is required',
 				title,
@@ -56,14 +50,13 @@ export const actions = {
 		}
 
 		try {
-			console.log('Creating issue...');
+
 			const newIssue = await createIssue(owner, repo, {
 				title: title.trim(),
 				body: body?.trim() || undefined,
 				state
 			});
 
-			console.log('Issue created successfully:', newIssue.id);
 			// Return the newly created issue so we can update the UI optimistically
 			return { success: true, issue: newIssue };
 		} catch (error) {

@@ -1,15 +1,12 @@
 <script lang="ts">
 	import { applyAction, enhance } from "$app/forms";
-	import { invalidateAll } from "$app/navigation";
 	import type { Repository } from "$lib/types.js";
 
 	let {
 		dialog = $bindable(),
-		show = $bindable(),
 		selectedRepository,
 	}: {
 		dialog: HTMLDialogElement | undefined;
-		show: boolean;
 		selectedRepository: Repository | null;
 	} = $props();
 
@@ -17,19 +14,11 @@
 	let body = $state("");
 	let issueState = $state<"open" | "closed">("open");
 
-	$effect(() => {
-		if (show && dialog) {
-			dialog.showModal();
-		} else if (dialog) {
-			dialog.close();
-		}
-	});
-
 	function handleCancel() {
 		title = "";
 		body = "";
 		issueState = "open";
-		show = false;
+		dialog?.close();
 	}
 </script>
 
@@ -52,7 +41,7 @@
 						title = "";
 						body = "";
 						issueState = "open";
-						show = false;
+						dialog?.close();
 					}, 100);
 				}}
 			>
