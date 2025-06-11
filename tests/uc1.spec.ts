@@ -104,7 +104,6 @@ test.describe('UC1 - Cloud', () => {
 
 					const startTime = performance.now();
 					await page.getByText(`thesis-test-static-${issue_count}`).click();
-					await page.waitForLoadState('networkidle');
 					await page.locator(".issues-table").waitFor({ state: 'visible' });
 					const endTime = performance.now();
 
