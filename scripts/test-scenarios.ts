@@ -199,7 +199,7 @@ export async function resetRepoToNormalState(repoName: string, expectedIssueCoun
 }
 
 // Helper for nuclear reset (delete and recreate repo)
-async function nuclearResetRepo(repoName: string, expectedIssueCount: number) {
+export async function nuclearResetRepo(repoName: string, expectedIssueCount: number) {
 	console.log(`🚨 NUCLEAR RESET: Deleting and recreating ${repoName} with ${expectedIssueCount} issues...`);
 
 	await recreateRepositoryWithIssues(
@@ -421,7 +421,7 @@ export async function runFullUseCase6Test125Issues(nuclearReset: boolean = false
 // CLI INTERFACE
 // =============================================================================
 
-// Check if this script is being run directly (not imported)
+// Check if this script is being run directly(not imported)
 // if (process.argv[1] === import.meta.url.replace('file://', '')) {
 // 	const command = process.argv[2];
 // 	const repoName = process.argv[3];
