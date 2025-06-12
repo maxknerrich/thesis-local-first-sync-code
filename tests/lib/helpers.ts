@@ -16,6 +16,38 @@ interface CsvManagerOptions {
 	includeTimestamp?: boolean;
 }
 
+export class TimeSeriesLogger {
+	private filePath: string;
+	private headers: string[];
+	private startTime: number;
+
+	constructor(testName: string, runNumber: number, issue_count: number, appType: string) {
+		const fileName = `${testName}_${appType}_run${runNumber}_issueCount${issue_count}.csv`;
+		this.filePath = path.join('results', 'timeseries', fileName);
+		this.headers = ['timestamp_ms', 'elapsed_ms', 'ram_mb', 'cpu_percent'];
+		this.startTime = Date.now();
+
+		// Ensure directory exists
+		fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+
+		// Write headers
+		fs.writeFileSync(this.filePath, `${this.headers.join(',')}\n`);
+	}
+
+	logSample(ramBytes: number, cpuPercent: number) {
+		const now = Date.now();
+		const elapsed = now - this.startTime;
+		const ramMB = Math.round(ramBytes / 1024 / 1024);
+
+		const row = [now, elapsed, ramMB, cpuPercent.toFixed(2)].join(',');
+		fs.appendFileSync(this.filePath, `${row}\n`);
+	}
+
+	getFilePath(): string {
+		return this.filePath;
+	}
+}
+
 export class ResultsManager {
 	private results: TestResult[] = [];
 	private csvPath: string;

@@ -1,7 +1,7 @@
 export const NETWORK_PROFILES = {
-	"Fiber FTTC": { latency: 15, download: 100, upload: 10 },
-	"4G": { latency: 60, download: 15, upload: 8 },
-	"3G": { latency: 300, download: 0.75, upload: 0.25 },
+	"Fiber FTTC": { latency: 15, downloadThroughput: 90, uploadThroughput: 10 },
+	"4G": { latency: 60, downloadThroughput: 10, uploadThroughput: 5 },
+	"3G": { latency: 150, downloadThroughput: 2.5, uploadThroughput: 0.25 },
 };
 
 export const ISSUE_COUNTS = [10, 50, 250];
@@ -27,8 +27,8 @@ export function getNetworkProfile(name: keyof typeof NETWORK_PROFILES) {
 	const profile = NETWORK_PROFILES[name];
 	return {
 		offline: false,
-		downloadThroughput: (profile.download * 1024 * 1024) / 8,
-		uploadThroughput: (profile.upload * 1024 * 1024) / 8,
+		downloadThroughput: (profile.downloadThroughput * 1024 * 1024) / 8,
+		uploadThroughput: (profile.uploadThroughput * 1024 * 1024) / 8,
 		latency: profile.latency,
 	};
 }
