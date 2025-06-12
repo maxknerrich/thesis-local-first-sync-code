@@ -15,7 +15,7 @@ export const sync = new GitHubSync<Schema, typeof db>({
 	syncConfig: {
 		issues: {
 			mode: 'auto',
-			syncInterval: 100,
+			syncInterval: 60,
 			path: 'rw',
 		},
 		repositories: {
