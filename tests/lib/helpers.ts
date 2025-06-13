@@ -22,8 +22,8 @@ export class TimeSeriesLogger {
 	private startTime: number;
 
 	constructor(testName: string, runNumber: number, issue_count: number, appType: string) {
-		const fileName = `${testName}_${appType}_run${runNumber}_issueCount${issue_count}.csv`;
-		this.filePath = path.join('results', 'timeseries', fileName);
+		const fileName = `${appType}_run${runNumber}_issueCount${issue_count}.csv`;
+		this.filePath = path.join('results', 'timeseries', testName, fileName);
 		this.headers = ['timestamp_ms', 'elapsed_ms', 'ram_mb', 'cpu_percent'];
 		this.startTime = Date.now();
 
