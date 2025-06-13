@@ -154,8 +154,14 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		// 	return;
 		// }
 
-		let tasks: string[] = [];
+		const tasks: string[] = [];
 		for (const table of this.syncedTables) {
+			// Check if sync was stopped during the loop
+			if (signal.aborted) {
+				this.isSyncing = false;
+				return;
+			}
+
 			const syncConfig = this.syncConfig?.[table as string];
 			if (syncConfig?.mode === 'manual') {
 				continue;
@@ -190,6 +196,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 			);
 		}
 		this.isSyncing = false;
+
 		this.manager.scheduleTaskRun('sync', undefined, 10 * 1000); // run again in 10 seconds
 	}
 	private getWritesPerObject(
@@ -359,7 +366,11 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	}
 
 	stop() {
-		this.manager.stop();
+		this.isSyncing = false; // Reset the sync flag
+		this.manager.delTask('sync');
+		this.manager.delTask('syncTable');
+		this.manager.stop(true);
+		console.log('Sync stopped');
 	}
 
 	private async applyChanges(categories: CategoriesObject, table: keyof TDB) {
@@ -447,6 +458,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		}
 
 		this.lastSync[table].status = 'syncing';
+		this.db._syncState.put({ key: 'lastSync', value: this.lastSync });
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 		const since = this.getSince(table);
 		const fetchArgs = since ? { table, since } : { table };

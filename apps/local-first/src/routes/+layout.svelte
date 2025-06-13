@@ -44,6 +44,8 @@
 <header class="header">
 	<h1>LocalIssues</h1>
 	<Fps height={50}></Fps>
+	<button onclick={() => sync.start()}>Start Sync</button>
+	<button onclick={() => sync.stop()}>Stop Sync</button>
 </header>
 <main>
 	<CreateProject bind:dialog={createProjectDialog} />
