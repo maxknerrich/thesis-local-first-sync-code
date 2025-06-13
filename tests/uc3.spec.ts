@@ -12,10 +12,17 @@ const manager = new ResultsManager('UC3', {
 	includeTimestamp: true
 });
 
-const syncInterval = 100;
+const syncInterval = 60;
 
 
 const ISSUE_COUNTS = [5, 25];
+
+test.afterEach(async ({ page }, testInfo) => {
+	//extract the issue count from the test title
+	const issueCountMatch = testInfo.title.match(/ISSUE_COUNT (\d+)/);
+	console.log(`Resetting repository for issue count: ${issueCountMatch[1]}`);
+	await nuclearResetRepo(`thesis-test-dynamic-${issueCountMatch[1]}`, issueCountMatch[1]);
+});
 
 
 test.describe('UC3 - Local First', () => {
@@ -25,10 +32,9 @@ test.describe('UC3 - Local First', () => {
 				page,
 				context,
 			}) => {
-				const timeSeries = new TimeSeriesLogger(`UC3 ${syncInterval}`, i, issue_count, "local-first");
+				const timeSeries = new TimeSeriesLogger("UC3", i, issue_count, `local-first${syncInterval}`);
 				const client = await context.newCDPSession(page);
 
-				const profile = getNetworkProfile("Fiber FTTC");
 				const request = {
 					GET: 0,
 					POST: 0,
@@ -40,7 +46,6 @@ test.describe('UC3 - Local First', () => {
 					console.log(`>> Request sent: ${res.method()} ${res.url()}`);
 					request[res.method()]++;
 				});
-				await client.send("Network.emulateNetworkConditions", profile);
 				await client.send("Performance.enable");
 
 
@@ -100,6 +105,7 @@ test.describe('UC3 - Local First', () => {
 
 
 				await page.getByRole('link', { name: 'Remote' }).click();
+				await page.waitForLoadState("networkidle");
 				await page.locator("table").waitFor({ state: 'visible' });
 
 
@@ -116,23 +122,20 @@ test.describe('UC3 - Local First', () => {
 				const startTime = Date.now();
 
 				for (let i = issue_count; i >= 1; i--) {
-					console.log("hey")
 					await page.getByRole('button', { name: 'Create Issue' }).click();
 					await page.getByRole('textbox', { name: 'Issue Title' }).fill(`Local ${i}/${issue_count}`);
-					const createStartTime = performance.now();
 					await page.getByRole('dialog').getByRole('button', { name: 'Create Issue' }).click();
-					console.log(`Local ${i}/${issue_count}`);
+					const createStartTime = performance.now();
 					await page.getByText(`Local ${i}/${issue_count}`).waitFor({ state: 'visible' });
-					console.log("found issue");
 					const createEndTime = performance.now();
 					await page.goto(`http://localhost:5173/project/1/issue/${i}`)
 					await page.getByRole('textbox', { name: 'Issue Title' }).click();
 
 					const initialTitle = await page.getByRole('textbox', { name: 'Issue Title' }).inputValue();
 					await page.getByRole('textbox', { name: 'Issue Title' }).fill(`LOCAL UPDATE ${initialTitle}`);
-					const updateStartTime = performance.now();
 					await page.getByRole('button', { name: 'Save & Back' }).click();
-					await page.locator("table").waitFor({ state: 'visible' });
+					const updateStartTime = performance.now();
+					await page.getByText(`LOCAL UPDATE ${initialTitle}`).waitFor({ state: "visible" });
 					const updateEndTime = performance.now();
 
 					ttvf.push(updateEndTime - updateStartTime);
@@ -156,8 +159,6 @@ test.describe('UC3 - Local First', () => {
 				await client.detach();
 
 
-				await nuclearResetRepo(`thesis-test-dynamic-${issue_count}`, issue_count);
-
 				const peakTTVF = ttvf.reduce((max, current) => {
 					return current > max ? current : max;
 				}, 0);
@@ -167,7 +168,7 @@ test.describe('UC3 - Local First', () => {
 
 				manager.addResult(
 					i,
-					"Fiber FTTC", // profile name
+					"no", // profile name
 					'local-first', // app name
 					{
 						syncInterval,
@@ -206,16 +207,14 @@ test.describe('UC3 - Cloud', () => {
 			}) => {
 
 
-				const timeSeries = new TimeSeriesLogger(`UC3 ${syncInterval}`, i, issue_count, "cloud");
+				const timeSeries = new TimeSeriesLogger("UC3", i, issue_count, "cloud");
 				const client = await context.newCDPSession(page);
 
-				const profile = getNetworkProfile("Fiber FTTC");
-				await client.send("Network.emulateNetworkConditions", profile);
 				await client.send("Performance.enable");
 
 
-				// let lastTimestamp = 0;
-				// let lastTaskDuration = 0;
+				let lastTimestamp = 0;
+				let lastTaskDuration = 0;
 
 				const ttvf: number[] = [];
 
@@ -224,41 +223,41 @@ test.describe('UC3 - Cloud', () => {
 
 				await page.waitForTimeout(2000); // Wait for the JIT compilation to finish
 
-				// const pollingInterval = setInterval(async () => {
-				// 	try {
-				// 		const { metrics: res } = await client.send("Performance.getMetrics");
+				const pollingInterval = setInterval(async () => {
+					try {
+						const { metrics: res } = await client.send("Performance.getMetrics");
 
-				// 		// --- RAM Calculation ---
-				// 		const jsHeapUsedSizeMetric = res.find(
-				// 			(m) => m.name === "JSHeapUsedSize"
-				// 		);
+						// --- RAM Calculation ---
+						const jsHeapUsedSizeMetric = res.find(
+							(m) => m.name === "JSHeapUsedSize"
+						);
 
-				// 		// --- CPU Calculation ---
-				// 		const timestampMetric = res.find((m) => m.name === "Timestamp");
-				// 		const taskDurationMetric = res.find(
-				// 			(m) => m.name === "TaskDuration"
-				// 		);
+						// --- CPU Calculation ---
+						const timestampMetric = res.find((m) => m.name === "Timestamp");
+						const taskDurationMetric = res.find(
+							(m) => m.name === "TaskDuration"
+						);
 
-				// 		if (timestampMetric && taskDurationMetric) {
-				// 			const timestamp = timestampMetric.value;
-				// 			const taskDuration = taskDurationMetric.value;
+						if (timestampMetric && taskDurationMetric) {
+							const timestamp = timestampMetric.value;
+							const taskDuration = taskDurationMetric.value;
 
-				// 			// We need at least two samples to calculate a delta
-				// 			if (lastTimestamp > 0) {
-				// 				const timeDelta = timestamp - lastTimestamp;
-				// 				const taskDelta = taskDuration - lastTaskDuration;
-				// 				// CPU usage is the percentage of time the main thread was busy
-				// 				const cpuUsage = (taskDelta / timeDelta) * 100;
-				// 				// @ts-ignore
-				// 				timeSeries.logSample(jsHeapUsedSizeMetric.value, cpuUsage);
-				// 			}
-				// 			lastTimestamp = timestamp;
-				// 			lastTaskDuration = taskDuration;
-				// 		}
-				// 	} catch (error) {
-				// 		console.error("Error polling metrics:", error);
-				// 	}
-				// }, 500);
+							// We need at least two samples to calculate a delta
+							if (lastTimestamp > 0) {
+								const timeDelta = timestamp - lastTimestamp;
+								const taskDelta = taskDuration - lastTaskDuration;
+								// CPU usage is the percentage of time the main thread was busy
+								const cpuUsage = (taskDelta / timeDelta) * 100;
+								// @ts-ignore
+								timeSeries.logSample(jsHeapUsedSizeMetric.value, cpuUsage);
+							}
+							lastTimestamp = timestamp;
+							lastTaskDuration = taskDuration;
+						}
+					} catch (error) {
+						console.error("Error polling metrics:", error);
+					}
+				}, 500);
 				await page.goto(`http://localhost:4173/maxknerrich/thesis-test-dynamic-${issue_count}`)
 				await page.waitForLoadState("networkidle")
 				await page.locator("table").waitFor({ state: 'visible' });
@@ -279,8 +278,8 @@ test.describe('UC3 - Cloud', () => {
 				for (let i = issue_count; i >= 1; i--) {
 					await page.getByRole('button', { name: 'Create Issue' }).click();
 					await page.getByRole('textbox', { name: 'Title *' }).fill(`Local ${i}/${issue_count}`);
-					const createStartTime = performance.now();
 					await page.getByRole('dialog').getByRole('button', { name: 'Create Issue' }).click();
+					const createStartTime = performance.now();
 					await page.getByText(`Local ${i}/${issue_count}`).waitFor({ state: 'visible' });
 					const createEndTime = performance.now();
 					await page.goto(`http://localhost:4173/maxknerrich/thesis-test-dynamic-${issue_count}/issue/${i}`)
@@ -288,10 +287,9 @@ test.describe('UC3 - Cloud', () => {
 
 					const initialTitle = await page.getByRole('textbox', { name: 'Title' }).inputValue();
 					await page.getByRole('textbox', { name: 'Title' }).fill(`LOCAL UPDATE ${initialTitle}`);
-					const updateStartTime = performance.now();
 					await page.getByRole('button', { name: 'Save Changes' }).click();
-					await page.waitForLoadState("networkidle");
-					await page.locator("table").waitFor({ state: 'visible' });
+					const updateStartTime = performance.now();
+					await page.getByText(`LOCAL UPDATE ${initialTitle}`).waitFor({ state: "visible" });
 					const updateEndTime = performance.now();
 
 					ttvf.push(updateEndTime - updateStartTime);
@@ -310,11 +308,9 @@ test.describe('UC3 - Cloud', () => {
 
 				await [remote];
 				// Stop polling
-				// clearInterval(pollingInterval);
+				clearInterval(pollingInterval);
 				await client.detach();
 
-
-				await nuclearResetRepo(`thesis-test-dynamic-${issue_count}`, issue_count);
 
 				// Get the final API call counts
 				const apiCallCounts = await getApiCallCounts();
@@ -328,7 +324,7 @@ test.describe('UC3 - Cloud', () => {
 
 				manager.addResult(
 					i,
-					"Fiber FTTC", // profile name
+					"no", // profile name
 					'cloud', // app name
 					{
 						syncInterval,
