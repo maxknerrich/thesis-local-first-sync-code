@@ -53,8 +53,8 @@ test.describe('UC2 - Local First', () => {
 				await page.getByRole('textbox', { name: 'Issue Title' }).fill('Local Issue created');
 
 
-				const startTime = performance.now();
 				await page.getByRole('dialog').getByRole('button', { name: 'Create Issue' }).click();
+				const startTime = performance.now();
 				await page.getByText('Local Issue created').waitFor({ state: 'visible' });
 				const endTime = performance.now();
 
@@ -104,8 +104,8 @@ test.describe('UC2 - Cloud', () => {
 
 				await page.getByRole('textbox', { name: 'Title *' }).fill('Local Issue created');
 
-				const startTime = performance.now();
 				await page.getByRole('dialog').getByRole('button', { name: 'Create Issue' }).click();
+				const startTime = performance.now();
 				await page.getByText('Local Issue created').waitFor({ state: 'visible' });
 				const endTime = performance.now();
 

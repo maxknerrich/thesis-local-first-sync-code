@@ -34,15 +34,15 @@ test.describe('UC1 - Local First', () => {
 
 					await page.locator('button', { hasText: 'New Project' }).waitFor({ state: 'visible' });
 					await page.getByRole('button', { name: 'New Project' }).click();
-					await page.getByRole('textbox', { name: 'Project Name:' }).fill('Remote');
+
 					await page.getByText('Sync with GitHub').click();
 					//wait for the sync -> Combobox should then be visible
 					await page.locator('role=combobox').waitFor({ state: 'visible' });
 					await page.getByRole('combobox').selectOption(`thesis-test-static-${issue_count}`);
 					await page.getByRole('button', { name: 'Create Project' }).click();
 
-					const initialStartTime = performance.now();
 					await page.getByRole('link', { name: 'Remote' }).click();
+					const initialStartTime = performance.now();
 					await page.locator("table").waitFor({ state: 'visible' });
 					const initialEndTime = performance.now();
 					await page.getByRole('button', { name: 'New Project' }).click();
@@ -51,8 +51,8 @@ test.describe('UC1 - Local First', () => {
 					await page.getByRole('button', { name: 'Create Project' }).click();
 					await page.getByRole('link', { name: 'Local' }).click();
 					await page.locator(".no-issues").waitFor({ state: 'visible' });
-					const startTime = performance.now();
 					await page.getByRole('link', { name: 'Remote' }).click();
+					const startTime = performance.now();
 					await page.locator("table").waitFor({ state: 'visible' });
 					const endTime = performance.now();
 
@@ -93,8 +93,8 @@ test.describe('UC1 - Cloud', () => {
 
 					await page.goto(APPS[1].use.baseURL);
 
-					const initialStartTime = performance.now();
 					await page.getByText(`thesis-test-static-${issue_count}`).click();
+					const initialStartTime = performance.now();
 
 					await page.locator(".issues-table").waitFor({ state: 'visible' });
 					const initialEndTime = performance.now();
@@ -102,8 +102,8 @@ test.describe('UC1 - Cloud', () => {
 					await page.getByText("bachelor-thesis").click();
 					await page.locator(".empty-state").waitFor({ state: 'visible' });
 
-					const startTime = performance.now();
 					await page.getByText(`thesis-test-static-${issue_count}`).click();
+					const startTime = performance.now();
 					await page.locator(".issues-table").waitFor({ state: 'visible' });
 					const endTime = performance.now();
 
