@@ -27,8 +27,8 @@
 
 	$effect(() => {
 		if (currentProject()) {
-			document.title = `Issues - ${currentProject()!.name}`;
-			if (currentProject()!.has_repository) {
+			document.title = `Issues - ${currentProject()?.name}`;
+			if (currentProject()?.has_repository) {
 				document.title += " (GitHub)";
 				sync.start();
 			} else {

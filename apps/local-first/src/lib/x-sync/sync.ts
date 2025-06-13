@@ -52,6 +52,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	private readonly default_interval = 5 * 60; // 5 minutes in seconds
 	private lastSync: LastSync<TDB>;
 	private syncConfig?: syncConfig;
+	private isStarted = false;
 	private initialData: { [K in keyof TDB]: Partial<DBObject> } | undefined;
 
 	constructor({
@@ -329,6 +330,11 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	}
 
 	start() {
+		if (this.isStarted) {
+			console.log('Sync is already started');
+			return;
+		}
+		this.isStarted = true;
 		this.manager.setTask(
 			'sync',
 			async (_, signal) => this.sync(signal),
@@ -341,9 +347,11 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		);
 		this.manager.start();
 		this.manager.scheduleTaskRun('sync');
+		console.log('Sync started');
 	}
 
 	private offline() {
+		this.isStarted = false; // Reset when going offline
 		this.manager.setTask('check_offline', async () => {
 			if (window.navigator.onLine) {
 				// if (!('connection' in window.navigator)) {
@@ -366,6 +374,11 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 	}
 
 	stop() {
+		if (!this.isStarted) {
+			console.log('Sync not started, ignoring stop() call');
+			return;
+		}
+		this.isStarted = false; // Reset the flag
 		this.isSyncing = false; // Reset the sync flag
 		this.manager.delTask('sync');
 		this.manager.delTask('syncTable');

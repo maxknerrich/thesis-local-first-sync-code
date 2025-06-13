@@ -36,17 +36,6 @@ test.describe('UC3 - Local First', () => {
 				const timeSeries = new TimeSeriesLogger("UC3", i, issue_count, `local-first${syncInterval}`);
 				const client = await context.newCDPSession(page);
 
-				const request = {
-					GET: 0,
-					POST: 0,
-					PATCH: 0,
-				}
-				page.on("request", (res) => {
-					if (!res.url().includes("api.github")) return;
-					if (res.url().includes("graphql")) return;
-					console.log(`>> Request sent: ${res.method()} ${res.url()}`);
-					request[res.method()]++;
-				});
 				await client.send("Performance.enable");
 
 
@@ -117,6 +106,17 @@ test.describe('UC3 - Local First', () => {
 					remote = createAndUpdate25IssuesParallel();
 				}
 
+				const request = {
+					GET: 0,
+					POST: 0,
+					PATCH: 0,
+				}
+				page.on("request", (res) => {
+					if (!res.url().includes("api.github")) return;
+					if (res.url().includes("graphql")) return;
+					console.log(`>> Request sent: ${res.method()} ${res.url()}`, res.postData());
+					request[res.method()]++;
+				});
 
 				const totalDurationMs = 5 * 60 * 1000; // 5 minutes
 				const startTime = Date.now();
@@ -128,7 +128,7 @@ test.describe('UC3 - Local First', () => {
 					const createStartTime = performance.now();
 					await page.getByText(`Local ${i}/${issue_count}`).waitFor({ state: 'visible' });
 					const createEndTime = performance.now();
-					await page.goto(`http://localhost:5173/project/1/issue/${i}`)
+					await page.getByRole("link", { name: `Issue ${i}/${issue_count} for thesis-test-dynamic-${issue_count}` }).click();
 					await page.getByRole('textbox', { name: 'Issue Title' }).click();
 
 					const initialTitle = await page.getByRole('textbox', { name: 'Issue Title' }).inputValue();
@@ -153,7 +153,7 @@ test.describe('UC3 - Local First', () => {
 					}
 				}
 
-				await [remote];
+				await remote;
 				await page.waitForTimeout(syncInterval * 1000)
 				// Stop polling
 				clearInterval(pollingInterval);
@@ -298,7 +298,7 @@ test.describe('UC3 - Cloud', () => {
 					}
 				}
 
-				await [remote];
+				await remote;
 				// Stop polling
 				clearInterval(pollingInterval);
 				await client.detach();
