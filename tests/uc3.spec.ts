@@ -8,7 +8,7 @@ import {
 import { ResultsManager, TimeSeriesLogger } from "./lib/helpers";
 
 const manager = new ResultsManager('UC3', {
-	customFields: ["syncInterval", 'GET', "POST", "PATCH", "PEAK_TTV"],
+	customFields: ["syncInterval", 'GET', "POST", "PATCH"],
 	includeTimestamp: true
 });
 
@@ -26,6 +26,7 @@ test.afterEach(async ({ page }, testInfo) => {
 
 
 test.describe('UC3 - Local First', () => {
+	const ttvfSeries = new TimeSeriesLogger("UC3", "ttvf", "", "local-first", ["issueCount", "syncInterval", "run", "createTTVF", "updateTTVF"]);
 	for (let i = 1; i <= RUNS_PER_TEST; i++) {
 		for (const issue_count of ISSUE_COUNTS) {
 			test(`LF - UC 3 - RUN ${i} - ISSUE_COUNT ${issue_count}`, async ({
@@ -52,7 +53,6 @@ test.describe('UC3 - Local First', () => {
 				let lastTimestamp = 0;
 				let lastTaskDuration = 0;
 
-				const ttvf: number[] = [];
 
 
 				await page.goto(APPS[0].use.baseURL);
@@ -138,8 +138,9 @@ test.describe('UC3 - Local First', () => {
 					await page.getByText(`LOCAL UPDATE ${initialTitle}`).waitFor({ state: "visible" });
 					const updateEndTime = performance.now();
 
-					ttvf.push(updateEndTime - updateStartTime);
-					ttvf.push(createEndTime - createStartTime);
+
+					ttvfSeries.logTTVF(createEndTime - createStartTime, updateEndTime - updateStartTime, i, issue_count, syncInterval);
+
 					// Calculate remaining time and adjust delay
 					if (i > 1) {
 						const elapsedTime = Date.now() - startTime;
@@ -159,13 +160,6 @@ test.describe('UC3 - Local First', () => {
 				await client.detach();
 
 
-				const peakTTVF = ttvf.reduce((max, current) => {
-					return current > max ? current : max;
-				}, 0);
-				const lowestTTVF = ttvf.reduce((min, current) => {
-					return current < min ? current : min;
-				}, Number.POSITIVE_INFINITY);
-
 				manager.addResult(
 					i,
 					"no", // profile name
@@ -175,8 +169,6 @@ test.describe('UC3 - Local First', () => {
 						GET: request.GET,
 						POST: request.POST,
 						PATCH: request.PATCH,
-						PEAK_TTV: peakTTVF,
-						LOW_TTV: lowestTTVF
 					}
 				)
 			})
@@ -195,6 +187,7 @@ async function resetApiCallCounts() {
 }
 
 test.describe('UC3 - Cloud', () => {
+	const ttvfSeries = new TimeSeriesLogger("UC3", "ttvf", "", "cloud", ["issueCount", "syncInterval", "run", "createTTVF", "updateTTVF"]);
 	test.beforeEach(async () => {
 		// Reset API call counters before each test
 		await resetApiCallCounts();
@@ -292,8 +285,7 @@ test.describe('UC3 - Cloud', () => {
 					await page.getByText(`LOCAL UPDATE ${initialTitle}`).waitFor({ state: "visible" });
 					const updateEndTime = performance.now();
 
-					ttvf.push(updateEndTime - updateStartTime);
-					ttvf.push(createEndTime - createStartTime);
+					ttvfSeries.logTTVF(createEndTime - createStartTime, updateEndTime - updateStartTime, i, issue_count, "none");
 					// Calculate remaining time and adjust delay
 					if (i > 1) {
 						const elapsedTime = Date.now() - startTime;
@@ -315,12 +307,6 @@ test.describe('UC3 - Cloud', () => {
 				// Get the final API call counts
 				const apiCallCounts = await getApiCallCounts();
 
-				const peakTTVF = ttvf.reduce((max, current) => {
-					return current > max ? current : max;
-				}, 0);
-				const lowestTTVF = ttvf.reduce((min, current) => {
-					return current < min ? current : min;
-				}, Number.POSITIVE_INFINITY);
 
 				manager.addResult(
 					i,
@@ -331,8 +317,6 @@ test.describe('UC3 - Cloud', () => {
 						GET: apiCallCounts.GET,
 						POST: apiCallCounts.POST,
 						PATCH: apiCallCounts.PATCH,
-						PEAK_TTV: peakTTVF,
-						LOW_TTV: lowestTTVF
 					}
 				)
 			})

@@ -21,10 +21,10 @@ export class TimeSeriesLogger {
 	private headers: string[];
 	private startTime: number;
 
-	constructor(testName: string, runNumber: number, issue_count: number, appType: string) {
+	constructor(testName: string, runNumber: number | string, issue_count: number | string, appType: string, headers: string[] = ['timestamp_ms', 'elapsed_ms', 'ram_mb', 'cpu_percent']) {
 		const fileName = `${appType}_run${runNumber}_issueCount${issue_count}.csv`;
 		this.filePath = path.join('results', 'timeseries', testName, fileName);
-		this.headers = ['timestamp_ms', 'elapsed_ms', 'ram_mb', 'cpu_percent'];
+		this.headers = headers
 		this.startTime = Date.now();
 
 		// Ensure directory exists
@@ -40,6 +40,11 @@ export class TimeSeriesLogger {
 		const ramMB = Math.round(ramBytes / 1024 / 1024);
 
 		const row = [now, elapsed, ramMB, cpuPercent.toFixed(2)].join(',');
+		fs.appendFileSync(this.filePath, `${row}\n`);
+	}
+
+	logTTVF(create: number, update: number, run: number, issueCount: number, syncInterval: number) {
+		const row = [issueCount, syncInterval, run, create, update].join(',');
 		fs.appendFileSync(this.filePath, `${row}\n`);
 	}
 
