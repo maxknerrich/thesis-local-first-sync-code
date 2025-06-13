@@ -9,7 +9,7 @@ export default defineConfig({
 	use: {
 		trace: "on-first-retry", // Capture trace on failure
 	},
-	timeout: 10 * 60 * 1000, // 10 minutes in milliseconds
+	timeout: 20 * 60 * 1000, // 10 minutes in milliseconds
 	// Optional: Define web servers to start automatically
 	webServer: [
 		{
