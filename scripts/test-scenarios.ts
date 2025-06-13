@@ -32,44 +32,73 @@ async function createIssuesWithTiming(
 	durationMinutes: number = 5,
 	prefix: string = "Test"
 ) {
-	const repoId = await getRepoId(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName);
-	if (!repoId) {
-		throw new Error(`Repository ${repoName} not found`);
-	}
-
-	console.log(`Creating ${count} issues in ${repoName} over ${durationMinutes} minutes...`);
+	console.log(`🚀 Starting to create ${count} issues in ${repoName} over ${durationMinutes} minutes`);
 
 	const intervalMs = (durationMinutes * 60 * 1000) / count;
-	const startTime = Date.now();
-
-	const createdIssues: Array<{ id: string; number: number }> = [];
+	const promises: Promise<any>[] = [];
 
 	for (let i = 1; i <= count; i++) {
-		const title = `${prefix} Issue ${i} - ${new Date().toISOString()}`;
-		const body = `This is ${prefix.toLowerCase()} issue #${i} created at ${new Date().toISOString()}`;
+		const promise = (async () => {
+			try {
+				// Wait for the scheduled time
+				await new Promise(res => setTimeout(res, intervalMs * (i - 1)));
 
-		const result = await createIssue(graphqlWithAuth, rateLimitState, repoId, title, body);
+				// Fetch repository ID fresh for EACH issue creation
+				console.log(`🔍 Fetching fresh repository ID for issue ${i}...`);
+				const repoId = await getRepoId(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName);
 
-		if (result) {
-			createdIssues.push(result);
-
-			const elapsed = Date.now() - startTime;
-			const progress = Math.round((i / count) * 100);
-			console.log(`Created issue ${i}/${count} (#${result.number}) - ${progress}% (${Math.round(elapsed / 1000)}s elapsed)`);
-
-			// Wait for the calculated interval (minus time already spent on API call)
-			if (i < count) {
-				const targetTime = startTime + (i * intervalMs);
-				const waitTime = Math.max(0, targetTime - Date.now());
-				if (waitTime > 0) {
-					await delay(waitTime);
+				if (!repoId) {
+					throw new Error(`Repository ${repoName} not found when creating issue ${i}`);
 				}
+
+				console.log(`✅ Using fresh repository ID: ${repoId} for issue ${i}`);
+
+				const title = `${prefix} Issue ${i} - ${new Date().toISOString()}`;
+				const body = `This is ${prefix.toLowerCase()} issue number ${i} created at ${new Date().toISOString()}`;
+
+				console.log(`📝 Creating issue ${i}/${count}: "${title}"`);
+
+				const result = await createIssue(
+					graphqlWithAuth,
+					rateLimitState,
+					repoId,
+					title,
+					body
+				);
+
+				console.log(`✅ Created issue ${i}/${count}: ${result.title}`);
+				return result;
+			} catch (error) {
+				console.error(`❌ Failed to create issue ${i}/${count}:`, error);
+				throw error;
 			}
-		}
+		})();
+
+		promises.push(promise);
 	}
 
-	console.log(`Finished creating ${createdIssues.length} issues in ${Math.round((Date.now() - startTime) / 1000)}s`);
-	return createdIssues;
+	// Wait for all issues to be created
+	try {
+		const results = await Promise.allSettled(promises);
+		const successful = results.filter(r => r.status === 'fulfilled').length;
+		const failed = results.filter(r => r.status === 'rejected').length;
+
+		console.log(`📊 Issue creation complete: ${successful} successful, ${failed} failed`);
+
+		if (failed > 0) {
+			console.error('Failed issue details:');
+			results.forEach((result, index) => {
+				if (result.status === 'rejected') {
+					console.error(`Issue ${index + 1}:`, result.reason);
+				}
+			});
+		}
+
+		return results;
+	} catch (error) {
+		console.error('Error in createIssuesWithTiming:', error);
+		throw error;
+	}
 }
 
 // Helper to update issues with timing
@@ -78,46 +107,66 @@ async function updateIssuesWithTiming(
 	count: number,
 	durationMinutes: number = 5
 ) {
-	const existingIssues = await getExistingIssues(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName, count);
+	console.log(`🔄 Starting to update ${count} issues in ${repoName} over ${durationMinutes} minutes`);
+
+	// Fetch fresh issues list
+	console.log(`🔍 Fetching fresh issues from ${repoName}...`);
+	const existingIssues = count > 100
+		? await getAllIssues(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName, count)
+		: await getExistingIssues(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName, count);
 
 	if (existingIssues.length < count) {
-		throw new Error(`Repository ${repoName} has only ${existingIssues.length} issues, need ${count}`);
+		console.warn(`⚠️ Only found ${existingIssues.length} existing issues, but need ${count} to update`);
 	}
 
-	console.log(`Updating ${count} issues in ${repoName} over ${durationMinutes} minutes...`);
+	const issuesToUpdate = existingIssues.slice(0, Math.min(count, existingIssues.length));
+	const intervalMs = (durationMinutes * 60 * 1000) / issuesToUpdate.length;
+	const promises: Promise<any>[] = [];
 
-	const intervalMs = (durationMinutes * 60 * 1000) / count;
-	const startTime = Date.now();
+	for (let i = 0; i < issuesToUpdate.length; i++) {
+		const promise = (async () => {
+			try {
+				// Wait for the scheduled time
+				await new Promise(res => setTimeout(res, intervalMs * i));
 
-	const updatedIssues: Array<{ id: string; number: number }> = [];
+				const issue = issuesToUpdate[i];
+				const newTitle = `UPDATED: ${issue.title} - ${new Date().toISOString()}`;
+				const newBody = `${issue.body}\n\nUpdated at: ${new Date().toISOString()}`;
 
-	for (let i = 0; i < count; i++) {
-		const issue = existingIssues[i];
-		const newTitle = `UPDATED: ${issue.title} - ${new Date().toISOString()}`;
-		const newBody = `${issue.body}\n\n--- UPDATED at ${new Date().toISOString()} ---`;
+				console.log(`🔄 Updating issue ${i + 1}/${issuesToUpdate.length}: "${issue.title}"`);
 
-		const success = await updateIssue(graphqlWithAuth, rateLimitState, issue.id, newTitle, newBody);
+				const result = await updateIssue(
+					graphqlWithAuth,
+					rateLimitState,
+					issue.id,
+					newTitle,
+					newBody
+				);
 
-		if (success) {
-			updatedIssues.push({ id: issue.id, number: issue.number });
-
-			const elapsed = Date.now() - startTime;
-			const progress = Math.round(((i + 1) / count) * 100);
-			console.log(`Updated issue ${i + 1}/${count} (#${issue.number}) - ${progress}% (${Math.round(elapsed / 1000)}s elapsed)`);
-
-			// Wait for the calculated interval
-			if (i < count - 1) {
-				const targetTime = startTime + ((i + 1) * intervalMs);
-				const waitTime = Math.max(0, targetTime - Date.now());
-				if (waitTime > 0) {
-					await delay(waitTime);
-				}
+				console.log(`✅ Updated issue ${i + 1}/${issuesToUpdate.length}`);
+				return result;
+			} catch (error) {
+				console.error(`❌ Failed to update issue ${i + 1}/${issuesToUpdate.length}:`, error);
+				throw error;
 			}
-		}
+		})();
+
+		promises.push(promise);
 	}
 
-	console.log(`Finished updating ${updatedIssues.length} issues in ${Math.round((Date.now() - startTime) / 1000)}s`);
-	return updatedIssues;
+	// Wait for all updates to complete
+	try {
+		const results = await Promise.allSettled(promises);
+		const successful = results.filter(r => r.status === 'fulfilled').length;
+		const failed = results.filter(r => r.status === 'rejected').length;
+
+		console.log(`📊 Issue updates complete: ${successful} successful, ${failed} failed`);
+
+		return results;
+	} catch (error) {
+		console.error('Error in updateIssuesWithTiming:', error);
+		throw error;
+	}
 }
 
 // Helper to delete issues above a certain number
@@ -284,7 +333,9 @@ export async function createAndUpdate125IssuesParallel(repoName: string = "thesi
 				throw new Error(`Repository ${repoName} not found`);
 			}
 
-			console.log(`Creating 125 issues in ${repoName} as fast as possible (respecting rate limits)...`);
+			console.log(`Creating 125 issues in ${repoName}...`);
+			console.log(`Note: Each issue creation enforces a 30-second delay (GitHub 150/hour limit)`);
+			console.log(`Expected duration: ~${Math.ceil(125 * 30 / 60)} minutes`);
 
 			const createdIssues: Array<{ id: string; number: number }> = [];
 			const progressTracker = createProgressTracker(125);
@@ -314,7 +365,7 @@ export async function createAndUpdate125IssuesParallel(repoName: string = "thesi
 			return createdIssues;
 		})(),
 		(async () => {
-			const existingIssues = await getExistingIssues(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName, 125);
+			const existingIssues = await getAllIssues(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName, 125);
 
 			if (existingIssues.length < 125) {
 				throw new Error(`Repository ${repoName} has only ${existingIssues.length} issues, need 125`);
