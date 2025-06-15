@@ -203,7 +203,9 @@ async function resetIssueUpdates(repoName: string, maxNumber: number) {
 	const maxIssues = Math.min(maxNumber + 50, 100); // Don't exceed GraphQL limit of 100
 	const existingIssues = await getExistingIssues(graphqlWithAuth, rateLimitState, GITHUB_OWNER, repoName, maxIssues);
 	const issuesToReset = existingIssues.filter(issue =>
-		issue.title.includes('UPDATED:') || issue.body.includes('--- UPDATED at')
+		issue.title.includes('UPDATED:') ||
+		issue.body.includes('--- UPDATED at') ||
+		issue.title.includes('UPDATE')
 	);
 
 	if (issuesToReset.length === 0) {
@@ -217,7 +219,10 @@ async function resetIssueUpdates(repoName: string, maxNumber: number) {
 
 	for (const issue of issuesToReset) {
 		// Remove "UPDATED:" prefix and timestamp from title
-		let originalTitle = issue.title.replace(/^UPDATED: /, '').replace(/ - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, '');
+		let originalTitle = issue.title
+			.replace(/^UPDATED: /, '')
+			.replace(/ - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, '')
+			.replace(/^LOCAL UPDATE \d+ /, '');
 
 		// Remove update note from body
 		let originalBody = issue.body.replace(/\n\n--- UPDATED at .*? ---$/, '');

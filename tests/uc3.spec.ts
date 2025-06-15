@@ -121,14 +121,14 @@ test.describe('UC3 - Local First', () => {
 				const totalDurationMs = 5 * 60 * 1000; // 5 minutes
 				const startTime = Date.now();
 
-				for (let i = issue_count; i >= 1; i--) {
+				for (let j = issue_count; j >= 1; j--) {
 					await page.getByRole('button', { name: 'Create Issue' }).click();
-					await page.getByRole('textbox', { name: 'Issue Title' }).fill(`Local ${i}/${issue_count}`);
+					await page.getByRole('textbox', { name: 'Issue Title' }).fill(`Local ${j}/${issue_count}`);
 					await page.getByRole('dialog').getByRole('button', { name: 'Create Issue' }).click();
 					const createStartTime = performance.now();
-					await page.getByText(`Local ${i}/${issue_count}`).waitFor({ state: 'visible' });
+					await page.getByText(`Local ${j}/${issue_count}`).waitFor({ state: 'visible' });
 					const createEndTime = performance.now();
-					await page.getByRole("link", { name: `Issue ${i}/${issue_count} for thesis-test-dynamic-${issue_count}` }).click();
+					await page.getByRole("link", { name: `Issue ${j}/${issue_count} for thesis-test-dynamic-${issue_count}` }).click();
 					await page.getByRole('textbox', { name: 'Issue Title' }).click();
 
 					const initialTitle = await page.getByRole('textbox', { name: 'Issue Title' }).inputValue();
@@ -142,9 +142,9 @@ test.describe('UC3 - Local First', () => {
 					ttvfSeries.logTTVF(createEndTime - createStartTime, updateEndTime - updateStartTime, i, issue_count, syncInterval);
 
 					// Calculate remaining time and adjust delay
-					if (i > 1) {
+					if (j > 1) {
 						const elapsedTime = Date.now() - startTime;
-						const completedIssues = issue_count - i + 1;
+						const completedIssues = issue_count - j + 1;
 						const targetTime = (completedIssues / issue_count) * totalDurationMs;
 						const remainingDelay = Math.max(0, targetTime - elapsedTime);
 						if (remainingDelay > 0) {
@@ -154,7 +154,7 @@ test.describe('UC3 - Local First', () => {
 				}
 
 				await remote;
-				await page.waitForTimeout(syncInterval * 1000)
+				await page.waitForTimeout(syncInterval * 1500)
 				// Stop polling
 				clearInterval(pollingInterval);
 				await client.detach();
@@ -268,14 +268,14 @@ test.describe('UC3 - Cloud', () => {
 				const totalDurationMs = 5 * 60 * 1000; // 5 minutes
 				const startTime = Date.now();
 
-				for (let i = issue_count; i >= 1; i--) {
+				for (let j = issue_count; j >= 1; j--) {
 					await page.getByRole('button', { name: 'Create Issue' }).click();
-					await page.getByRole('textbox', { name: 'Title *' }).fill(`Local ${i}/${issue_count}`);
+					await page.getByRole('textbox', { name: 'Title *' }).fill(`Local ${j}/${issue_count}`);
 					await page.getByRole('dialog').getByRole('button', { name: 'Create Issue' }).click();
 					const createStartTime = performance.now();
-					await page.getByText(`Local ${i}/${issue_count}`).waitFor({ state: 'visible' });
+					await page.getByText(`Local ${j}/${issue_count}`).waitFor({ state: 'visible' });
 					const createEndTime = performance.now();
-					await page.goto(`http://localhost:4173/maxknerrich/thesis-test-dynamic-${issue_count}/issue/${i}`)
+					await page.goto(`http://localhost:4173/maxknerrich/thesis-test-dynamic-${issue_count}/issue/${j}`)
 					await page.waitForLoadState("networkidle");
 
 					const initialTitle = await page.getByRole('textbox', { name: 'Title' }).inputValue();
@@ -287,9 +287,9 @@ test.describe('UC3 - Cloud', () => {
 
 					ttvfSeries.logTTVF(createEndTime - createStartTime, updateEndTime - updateStartTime, i, issue_count, "none");
 					// Calculate remaining time and adjust delay
-					if (i > 1) {
+					if (j > 1) {
 						const elapsedTime = Date.now() - startTime;
-						const completedIssues = issue_count - i + 1;
+						const completedIssues = issue_count - j + 1;
 						const targetTime = (completedIssues / issue_count) * totalDurationMs;
 						const remainingDelay = Math.max(0, targetTime - elapsedTime);
 						if (remainingDelay > 0) {
