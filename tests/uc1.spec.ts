@@ -42,8 +42,8 @@ test.describe('UC1 - Local First', () => {
 					await page.getByRole('combobox').selectOption(`thesis-test-static-${issue_count}`);
 					await page.getByRole('button', { name: 'Create Project' }).click();
 
+					await page.getByRole('link', { name: 'Remote' }).click({ noWaitAfter: true });
 					const initialStartTime = performance.now();
-					await page.getByRole('link', { name: 'Remote' }).click();
 					await page.locator("table").waitFor({ state: 'visible' });
 					const initialEndTime = performance.now();
 					await page.getByRole('button', { name: 'New Project' }).click();
@@ -52,8 +52,8 @@ test.describe('UC1 - Local First', () => {
 					await page.getByRole('button', { name: 'Create Project' }).click();
 					await page.getByRole('link', { name: 'Local' }).click();
 					await page.locator(".no-issues").waitFor({ state: 'visible' });
+					await page.getByRole('link', { name: 'Remote' }).click({ noWaitAfter: true });
 					const startTime = performance.now();
-					await page.getByRole('link', { name: 'Remote' }).click();
 					await page.locator("table").waitFor({ state: 'visible' });
 					const endTime = performance.now();
 
@@ -94,8 +94,8 @@ test.describe('UC1 - Cloud', () => {
 
 					await page.goto(APPS[1].use.baseURL);
 
+					await page.getByRole('link', { name: `thesis-test-static-${issue_count}` }).click({ noWaitAfter: true });
 					const initialStartTime = performance.now();
-					await page.getByRole('link', { name: `thesis-test-static-${issue_count}` }).click();
 
 					await page.locator(".issues-table").waitFor({ state: 'visible' });
 					const initialEndTime = performance.now();
@@ -103,8 +103,8 @@ test.describe('UC1 - Cloud', () => {
 					await page.getByText("bachelor-thesis").click();
 					await page.locator(".empty-state").waitFor({ state: 'visible' });
 
+					await page.getByRole('link', { name: `thesis-test-static-${issue_count}` }).click({ noWaitAfter: true });
 					const startTime = performance.now();
-					await page.getByRole('link', { name: `thesis-test-static-${issue_count}` }).click();
 					await page.locator(".issues-table").waitFor({ state: 'visible' });
 					const endTime = performance.now();
 
