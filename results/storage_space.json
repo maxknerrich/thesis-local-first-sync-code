@@ -1,0 +1,20 @@
+{
+	"beforeSync": {
+		"issues": 5512,
+		"repositories": 4993,
+		"writeLog": 10062,
+		"syncState": 170
+	},
+	"afterSync": {
+		"issues": 6603,
+		"repositories": 4993,
+		"writeLog": 0,
+		"syncState": 171
+	},
+	"without_remote_data": {
+		"issues": 5353,
+		"repositories": 4073,
+		"writeLog": 0,
+		"syncState": 0
+	}
+}
