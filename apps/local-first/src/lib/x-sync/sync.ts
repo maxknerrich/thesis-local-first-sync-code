@@ -146,14 +146,14 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		this.isSyncing = true; // Set the flag
 
 		// Check connection quality if supported
-		// if (
-		// 	'connection' in window.navigator
-		// 	//@ts-ignore
-		// 	// window.navigator.connection?.effectiveType !== '4g'
-		// ) {
-		// 	this.offline();
-		// 	return;
-		// }
+		if (
+			'connection' in window.navigator
+			//@ts-ignore
+			// window.navigator.connection?.effectiveType !== '4g'
+		) {
+			this.offline();
+			return;
+		}
 
 		const tasks: string[] = [];
 		for (const table of this.syncedTables) {
@@ -358,14 +358,13 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 				this.start();
 				return;
 			}
-			// if (
-			// 	//@ts-ignore
-			// 	window.navigator.connection?.effectiveType === '4g'
-			// ) {
-			// 	this.start();
-			// 	return;
-			// }
-			// }
+			if (
+				//@ts-ignore
+				window.navigator.connection?.effectiveType === '4g'
+			) {
+				this.start();
+				return;
+			}
 			this.manager.scheduleTaskRun('check_offline', undefined, 500);
 		});
 		this.manager.delTask('sync');
@@ -390,7 +389,7 @@ export abstract class SyncBase<TDB extends Dexie = Dexie> {
 		const localTable = this.db[table] as Dexie.Table<unknown, string | number>;
 		const localUpdatesFromRemote: CreateReturn[] = [];
 		// Create a push queue for handling remote operations, sharing the same manager
-		const pushQueue = new PushQueue(100, 180); // 100 concurrent, 180 per minute
+		const pushQueue = new PushQueue(5, 10); // 100 concurrent, 180 per minute
 
 		const {
 			newLocal,
