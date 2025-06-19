@@ -1,38 +1,14 @@
-# sv
+# Thesis Local-First Synchronization Layer
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+## Prototype
+The prototype can be found under [/apps/local-first](/apps/local-first).
+To run the application, an GitHub token must be provided as a ENV varaiable.
 
-## Creating a project
+The code for the sync layer is inside the [/lib/x-sync](/apps/local-first/src/lib/x-sync).
+It includes the Dexie.js add-on, the generic sync object as well as the API adapter for the GitHub API.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Benchmarks
+The Benchmarks can be found under `/tests`. `/scripts` includes helper methods to create and reset repositories using the GitHub API.
 
-```bash
-# create a new project in the current directory
-npx sv create
+`/apps/cloud-test` includes the code for the SSR client-server application that was compared against the prototype.
 
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
