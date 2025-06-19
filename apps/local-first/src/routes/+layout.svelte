@@ -13,6 +13,8 @@
 
 	let createProjectDialog = $state<HTMLDialogElement>();
 
+	let syncStarted = $state(false);
+
 	// Get current project ID from page params
 	const currentProjectId = $derived(() => {
 		const params = $page.params;
@@ -30,13 +32,9 @@
 			document.title = `Issues - ${currentProject()?.name}`;
 			if (currentProject()?.has_repository) {
 				document.title += " (GitHub)";
-				sync.start();
-			} else {
-				sync.stop();
 			}
 		} else {
 			document.title = "Issues";
-			sync.stop();
 		}
 	});
 </script>
