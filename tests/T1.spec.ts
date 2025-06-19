@@ -9,18 +9,18 @@ import {
 import { ResultsManager } from "./lib/helpers";
 
 
-const manager = new ResultsManager('UC1', {
+const manager = new ResultsManager('T1', {
 	customFields: ['issue_count', 'initialTTVF', 'TTVF'],
 	includeTimestamp: true
 });
 
-test.describe('UC1 - Local First', () => {
+test.describe('T1 - Local First', () => {
 	for (let i = 1; i <= RUNS_PER_TEST; i++) {
 		for (const issue_count of ISSUE_COUNTS) {
 			for (const profileName of Object.keys(NETWORK_PROFILES) as Array<
 				keyof typeof NETWORK_PROFILES
 			>) {
-				test(`LF - UC 1 - RUN ${i} - ${profileName} - ${issue_count}`, async ({
+				test(`LF - T 1 - RUN ${i} - ${profileName} - ${issue_count}`, async ({
 					page,
 					context,
 				}) => {
@@ -76,13 +76,13 @@ test.describe('UC1 - Local First', () => {
 	}
 });
 
-test.describe('UC1 - Cloud', () => {
+test.describe('T1 - Cloud', () => {
 	for (let i = 1; i <= RUNS_PER_TEST; i++) {
 		for (const issue_count of ISSUE_COUNTS) {
 			for (const profileName of Object.keys(NETWORK_PROFILES) as Array<
 				keyof typeof NETWORK_PROFILES
 			>) {
-				test(`CLOUD - UC 1 - RUN ${i} - ${profileName} - ${issue_count}`, async ({
+				test(`CLOUD - T 1 - RUN ${i} - ${profileName} - ${issue_count}`, async ({
 					page,
 					context,
 				}) => {

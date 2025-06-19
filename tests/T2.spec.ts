@@ -7,7 +7,7 @@ import {
 } from "./lib/constants";
 import { ResultsManager, TimeSeriesLogger } from "./lib/helpers";
 
-const manager = new ResultsManager('UC3', {
+const manager = new ResultsManager('T2', {
 	customFields: ["syncInterval", 'GET', "POST", "PATCH"],
 	includeTimestamp: true
 });
@@ -25,15 +25,15 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 
-test.describe('UC3 - Local First', () => {
-	const ttvfSeries = new TimeSeriesLogger("UC3", "ttvf", "", "local-first", ["issueCount", "syncInterval", "run", "createTTVF", "updateTTVF"]);
+test.describe('T2 - Local First', () => {
+	const ttvfSeries = new TimeSeriesLogger("T2", "ttvf", "", "local-first", ["issueCount", "syncInterval", "run", "createTTVF", "updateTTVF"]);
 	for (let i = 1; i <= RUNS_PER_TEST; i++) {
 		for (const issue_count of ISSUE_COUNTS) {
-			test(`LF - UC 3 - RUN ${i} - ISSUE_COUNT ${issue_count}`, async ({
+			test(`LF - T 3 - RUN ${i} - ISSUE_COUNT ${issue_count}`, async ({
 				page,
 				context,
 			}) => {
-				const timeSeries = new TimeSeriesLogger("UC3", i, issue_count, `local-first${syncInterval}`);
+				const timeSeries = new TimeSeriesLogger("T2", i, issue_count, `local-first${syncInterval}`);
 				const client = await context.newCDPSession(page);
 
 				await client.send("Performance.enable");
@@ -186,21 +186,21 @@ async function resetApiCallCounts() {
 	await fetch('http://localhost:4173/api/call-counts', { method: 'DELETE' });
 }
 
-test.describe('UC3 - Cloud', () => {
-	const ttvfSeries = new TimeSeriesLogger("UC3", "ttvf", "", "cloud", ["issueCount", "syncInterval", "run", "createTTVF", "updateTTVF"]);
+test.describe('T2 - Cloud', () => {
+	const ttvfSeries = new TimeSeriesLogger("T2", "ttvf", "", "cloud", ["issueCount", "syncInterval", "run", "createTTVF", "updateTTVF"]);
 	test.beforeEach(async () => {
 		// Reset API call counters before each test
 		await resetApiCallCounts();
 	});
 	for (let i = 1; i <= RUNS_PER_TEST; i++) {
 		for (const issue_count of ISSUE_COUNTS) {
-			test(`CLOUD - UC 3 - RUN ${i} - ISSUE_COUNT ${issue_count}`, async ({
+			test(`CLOUD - T 3 - RUN ${i} - ISSUE_COUNT ${issue_count}`, async ({
 				page,
 				context,
 			}) => {
 
 
-				const timeSeries = new TimeSeriesLogger("UC3", i, issue_count, "cloud");
+				const timeSeries = new TimeSeriesLogger("T2", i, issue_count, "cloud");
 				const client = await context.newCDPSession(page);
 
 				await client.send("Performance.enable");
